@@ -1,7 +1,7 @@
 // Desenha a partida da GameScene em 3D. Só LÊ o estado do jogo: posições,
 // bola, estado da partida e os indicadores (anel, alvo do passe, medidor...).
 import * as THREE from 'three';
-import { Y_SCALE, PLAYER, SHOT, MID_Y } from '../config.js';
+import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET } from '../config.js';
 import { buildCourt, VS, toZ } from './court3d.js';
 import PlayerModel, { SIZE } from './PlayerModel.js';
 
@@ -186,6 +186,9 @@ export default class World3D {
     const seen = new Set();
     this.handBall = null;
     this.dribbleBall = null;
+    // aro da cesta atacada (bandeja e enterrada miram nele)
+    const bk = g.basket || BASKET;
+    const rim = new THREE.Vector3(bk.x, bk.rimZ * VS, toZ(bk.y));
     g.all.forEach((p, k) => {
       seen.add(p);
       let m = this.models.get(p);
@@ -234,7 +237,7 @@ export default class World3D {
         hold = true; // bola no peito enquanto recolhe
       }
       if (holding) {
-        if (b.z >= 18) hold = true;
+        if (b.z >= 18 || p.layupT > 0) hold = true; // passe/reposição ou passadas da bandeja: bola no peito
         else {
           const dx = b.x - x;
           const dz = (b.y - y) * Y_SCALE;
@@ -253,7 +256,7 @@ export default class World3D {
           x,
           z3: toZ(y),
           vx,
-          vz: vy / PLAYER.verticalFactor,
+          vz: vy * Y_SCALE, // velocidade real na tela 3D (passada pela distância)
           facingX: fx,
           facingZ: fz,
           lift,
@@ -265,11 +268,23 @@ export default class World3D {
           hold,
           ballWorld,
           gather,
-          shotStart: !replay && b.state === 'shot' && this.prevBallState !== 'shot' && b.shot && b.shot.shooter === p && b.shot.kind === 'jump',
+          // a bola acabou de sair da mão dele: 'jump' | 'layup' | 'floater' | 'dunk'
+          shotStart: !replay && b.state === 'shot' && this.prevBallState !== 'shot' && b.shot && b.shot.shooter === p ? b.shot.kind : null,
+          ballDrop: !replay && b.state === 'drop' && b.shot && b.shot.shooter === p,
+          rim,
+          sprinting: !!p.sprinting,
+          // últimas passadas da bandeja: já sai do chão (enterrada se você pediu com o sprint)
+          takeoff: !replay && p.layupT > 0 && p.layupT < 0.16 ? (p.wantDunk ? 'dunk' : 'layup') : null,
         },
         dt,
         time,
       );
+      // enterrada: a bola fica na mão até chegar ao aro
+      if (!replay && b.state === 'shot' && b.shot && b.shot.shooter === p && b.shot.kind === 'dunk') {
+        const h = m.handPos();
+        h.y += BALL_R * 0.6;
+        this.handBall = h;
+      }
       // arremesso/passe: a bola fica entre as mãos do modelo
       if (!replay && b.state === 'held' && b.holder === p && (shoot || hold)) {
         const c = m.handsCenter();
@@ -295,13 +310,12 @@ export default class World3D {
 
     // altura na tela: no drible a bola fica na altura da mão (escala menor)
     let Y = z * VS + BALL_R * 0.8;
-    if (!replay && b.state === 'held') {
-      if (this.handBall) {
-        x = this.handBall.x;
-        Y = this.handBall.y;
-        y = this.handBall.z / Y_SCALE;
-      } else if (this.dribbleBall) Y = this.dribbleBall.y;
-    }
+    // bola na mão (arremesso, passe, enterrada) ou no drible
+    if (!replay && this.handBall) {
+      x = this.handBall.x;
+      Y = this.handBall.y;
+      y = this.handBall.z / Y_SCALE;
+    } else if (!replay && b.state === 'held' && this.dribbleBall) Y = this.dribbleBall.y;
 
     // cesta: a bola atravessa a rede devagar (no jogo ela cai rápido demais para ver)
     if (b.state === 'drop' && !replay) {

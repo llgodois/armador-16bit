@@ -8,6 +8,7 @@
 //     lê o estado (jogadores, bola, indicadores) e desenha em Three.js.
 //  Nada em src/ (fora desta pasta) sabe que o 3D existe.
 // =====================================================================
+import './storage64.js'; // PRIMEIRO: dados (Supabase e navegador) separados do 16-bit
 import Phaser from 'phaser';
 import { VIEW, DEBUG } from '../config.js';
 import BootScene from '../scenes/BootScene.js';
@@ -58,6 +59,8 @@ const game = new Phaser.Game({
 installPadBridge(game);
 // cada tela, ao ser criada, ganha o zoom e o fundo translúcido (a partida 2D fica escondida)
 game.events.once('ready', () => {
+  // regras que só existem no 64 (vida extra na Sobrevivência, enterrada no comando)
+  game.scene.getScene('Game').v64 = true;
   for (const sc of game.scene.scenes) {
     if (sc.sys.settings.key === 'Game') continue;
     sc.events.on('create', () => styleScene(sc));

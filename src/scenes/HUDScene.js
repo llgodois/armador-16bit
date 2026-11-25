@@ -58,11 +58,13 @@ export default class HUDScene extends Phaser.Scene {
     new PixelText(this, 8, H - 16, 'GAS', { color: 0xb8b0d0 });
     this.stamBar = this.add.graphics();
 
-    box(94, H - 20, 270, 16);
-    this.playText = new PixelText(this, 229, H - 16, '', { origin: [0.5, 0] });
+    // versão 3D: painel da direita mais largo (nome do armador + estilo)
+    const bw = THEME.modern ? 148 : 108;
+    box(94, H - 20, W - bw - 102, 16);
+    this.playText = new PixelText(this, 94 + (W - bw - 102) / 2, H - 16, '', { origin: [0.5, 0] });
 
-    box(W - 112, H - 20, 108, 16);
-    this.buildText = new PixelText(this, W - 58, H - 16, '', { origin: [0.5, 0] });
+    box(W - bw - 4, H - 20, bw, 16);
+    this.buildText = new PixelText(this, W - 4 - bw / 2, H - 16, '', { origin: [0.5, 0] });
 
     // Faixa grande (início/fim) e aviso rápido (cesta, roubo...)
     this.bannerBg = this.add.graphics().setDepth(10);
@@ -200,9 +202,21 @@ export default class HUDScene extends Phaser.Scene {
       this.playText.setText(this.contestText || '').setColor(0x6dff6d);
     }
     if (g.survival) {
-      this.gameClock.setText(`VIDAS ${g.lives}`);
-      this.gameClock.setColor(g.lives > 1 ? 0xffe14d : 0xff7b6b);
       this.foulText.setText(`RANKING ${g.stats.fgm + g.stats.ast}`);
+      if (THEME.modern) {
+        // versão 3D: vidas como bolinhas verdes (vazias = vidas perdidas)
+        this.gameClock.setText('');
+        if (!this.livesG) this.livesG = this.add.graphics();
+        const lg = this.livesG.clear();
+        for (let i = 0; i < 3; i++) {
+          const x = 168 + i * 14;
+          if (i < g.lives) lg.fillStyle(0x3ddc5a, 1).fillCircle(x, 12, 4).fillStyle(0xb6ffc4, 0.9).fillCircle(x - 1.2, 10.8, 1.3);
+          else lg.lineStyle(1, 0x55657f, 1).strokeCircle(x, 12, 3.5);
+        }
+      } else {
+        this.gameClock.setText(`VIDAS ${g.lives}`);
+        this.gameClock.setColor(g.lives > 1 ? 0xffe14d : 0xff7b6b);
+      }
     }
 
     // Jogada (sua ou do adversário) e esquema defensivo em uso: é o que você precisa ler
@@ -217,7 +231,9 @@ export default class HUDScene extends Phaser.Scene {
       this.playText.setText(def ? `SUA DEFESA: ${sch.name}` : `DEFESA ADV: ${sch.name}`);
       this.playText.setColor(def ? 0xff9a4d : 0xd8d0ee);
     }
-    this.buildText.setText(`${g.build.name}${sfx.muted ? ' - MUDO' : ''}`);
+    // versão 3D: nome do seu armador + estilo (a fonte nova é estreita e cabe)
+    const who = THEME.modern && g.pg && g.pg.info ? `${g.pg.info.name}  -  ` : '';
+    this.buildText.setText(`${who}${g.build.name}${sfx.muted ? ' - MUDO' : ''}`);
     this.buildText.setColor(sfx.muted ? 0xff7b6b : 0xb8b0d0);
   }
 }

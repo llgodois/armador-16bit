@@ -18,6 +18,14 @@ try {
 
 export const isOnline = () => !!(SUPABASE.url && SUPABASE.anonKey);
 
+// Tabelas do Supabase. O 16-bit usa players/scores; a versão 3D (Armador 64)
+// chama useTables('64') e passa a usar players64/scores64 (contas e ranking separados).
+const T = { players: 'players', scores: 'scores' };
+export function useTables(suffix) {
+  T.players = `players${suffix}`;
+  T.scores = `scores${suffix}`;
+}
+
 const readLS = (k, def) => {
   try {
     return JSON.parse(localStorage.getItem(k)) ?? def;
@@ -67,14 +75,16 @@ export async function login(rawName, pin) {
   writeLS(LAST_NAME, name);
   if (isOnline()) {
     try {
-      const rows = await rest(`players?name=eq.${encodeURIComponent(name)}&select=*`);
+      const rows = await rest(`${T.players}?name=eq.${encodeURIComponent(name)}&select=*`);
       if (rows.length) {
         if (rows[0].pin_hash !== pinHash) return { ok: false, error: 'PIN ERRADO' };
         return { ok: true, profile: rows[0] };
       }
-      const created = await rest('players', { method: 'POST', body: blank(name, pinHash), prefer: 'return=representation' });
+      const created = await rest(T.players, { method: 'POST', body: blank(name, pinHash), prefer: 'return=representation' });
       return { ok: true, profile: created[0], created: true };
     } catch (e) {
+      // tabela inexistente (ex.: players64 antes de rodar o supabase64.sql)
+      if (/PGRST205|404/.test(e.message)) return { ok: false, error: 'CONTAS DESTA VERSAO AINDA NAO ATIVADAS NO SERVIDOR', detail: e.message };
       return { ok: false, error: 'SEM CONEXAO COM O SERVIDOR', detail: e.message };
     }
   }
@@ -93,7 +103,7 @@ export async function saveProfile(p) {
   const patch = { coins: p.coins, unlocked: p.unlocked, best: p.best, games: p.games, team_best: p.team_best || {} };
   if (isOnline()) {
     try {
-      await rest(`players?name=eq.${encodeURIComponent(p.name)}`, { method: 'PATCH', body: patch });
+      await rest(`${T.players}?name=eq.${encodeURIComponent(p.name)}`, { method: 'PATCH', body: patch });
       return true;
     } catch {
       return false;
@@ -109,7 +119,7 @@ export async function submitScore(entry) {
   const row = { name: entry.name, score: entry.score, baskets: entry.baskets, assists: entry.assists, pg: entry.pg };
   if (isOnline()) {
     try {
-      await rest('scores', { method: 'POST', body: row });
+      await rest(T.scores, { method: 'POST', body: row });
       return true;
     } catch {
       return false;
@@ -125,7 +135,7 @@ export async function submitScore(entry) {
 export async function topScores(limit = 10) {
   if (isOnline()) {
     try {
-      return await rest(`scores?select=name,score,baskets,assists,pg,created_at&order=score.desc,created_at.asc&limit=${limit}`);
+      return await rest(`${T.scores}?select=name,score,baskets,assists,pg,created_at&order=score.desc,created_at.asc&limit=${limit}`);
     } catch {
       return null;
     }

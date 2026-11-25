@@ -95,6 +95,8 @@ export default class GameScene extends Phaser.Scene {
     // COMPETITIVO (Sobrevivência): só posses de ataque, 3 vidas
     this.survival = !!setup.survival;
     this.lives = 3;
+    this.survStreak = 0; // (só no 64) sequência do estilo do armador que devolve vida
+    this.possAssist = false;
     this.survPoss = 0;
     this.survOk = 0;
     this.possPts = 0;
@@ -1202,8 +1204,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.offSide !== 'away' || this.state !== 'live') return;
     this.survPoss++;
     const ok = this.possPts > 0;
+    if (!this.possAssist) this.survStreakBreak('passador');
+    this.possAssist = false;
     if (ok) this.survOk++;
     else {
+      this.survStreakBreak('all');
       this.lives--;
       sfx.play('life');
       this.narrator.say('life', {}, true);
@@ -1216,6 +1221,30 @@ export default class GameScene extends Phaser.Scene {
       this.events.emit('toast', 'A defesa apertou!', 0xff9a4d);
     }
     this.newSurvivalPossession();
+  }
+
+  // ---- (só no 64) Sobrevivência: 3 acertos SEGUIDOS do estilo do seu armador devolvem 1 vida (máx. 3)
+  //   chutador: cestas de 3 · passador: assistências · infiltrador: bandejas/enterradas
+  survStreakHit(kind) {
+    if (!this.v64 || !this.survival || !kind || !this.build || kind !== this.build.id) return;
+    this.survStreak = (this.survStreak || 0) + 1;
+    if (this.survStreak < 3) {
+      this.events.emit('toast', `SEQUENCIA ${this.survStreak}/3`, 0x6dff6d);
+      return;
+    }
+    this.survStreak = 0;
+    if (this.lives < 3) {
+      this.lives++;
+      sfx.play('green');
+      this.events.emit('toast', '+1 VIDA!', 0x6dff6d);
+    } else this.events.emit('toast', 'SEQUENCIA! VIDAS JA ESTAO CHEIAS', 0x6dff6d);
+  }
+
+  survStreakBreak(kind) {
+    if (!this.v64 || !this.survival || !this.build) return;
+    if (kind !== 'all' && kind !== this.build.id) return;
+    if (this.survStreak > 0) this.events.emit('toast', 'SEQUENCIA ZERADA', 0xff9a4d);
+    this.survStreak = 0;
   }
 
   newSurvivalPossession() {
@@ -2462,6 +2491,8 @@ export default class GameScene extends Phaser.Scene {
     p.layupDir = { x: (t.x - p.x) / (d || 1), y: (t.y - p.y) / (d || 1) };
     p.layupT = d < 14 ? 0.05 : LAYUP.driveTime;
     p.layupStyle = null;
+    // (só no 64) segurando o sprint: pede ENTERRADA
+    p.wantDunk = !!(this.v64 && p === this.user && this.btn.SHIFT.isDown);
     if (p === this.user) {
       this.gathering = false;
       // tipo de bandeja pelo comando (como no 2K):
@@ -2508,7 +2539,11 @@ export default class GameScene extends Phaser.Scene {
     const space = this.nearestDefenderDist(p);
     const near = Math.hypot(p.x - this.basket.x, p.y - this.basket.y) < LAYUP.dunkMaxDist;
     const fin = p.skills.finishing;
-    const dunk = fin >= LAYUP.dunkMinFinishing && space >= LAYUP.dunkOpenDist && near && Math.random() < LAYUP.dunkTry;
+    let dunk = fin >= LAYUP.dunkMinFinishing && space >= LAYUP.dunkOpenDist && near && Math.random() < LAYUP.dunkTry;
+    // (só no 64) você pediu a enterrada: sai se for atlético o bastante (finalização boa ou 1,96 m+)
+    const asked = p.wantDunk && near;
+    if (asked) dunk = fin >= 0.95 || p.cm >= 196;
+    p.wantDunk = false;
     // defensor colado entre você e o aro: flutuante (armadores/alas) ou gancho (grandalhões)
     const { d: nd } = this.nearestDefender(p);
     const blocked = !dunk && nd && space < 13 && courtDist(nd, this.basket) < courtDist(p, this.basket);
@@ -2516,7 +2551,7 @@ export default class GameScene extends Phaser.Scene {
     let chance;
     let kind = dunk ? 'dunk' : 'layup';
     let label = dunk ? 'ENTERRADA!' : 'BANDEJA';
-    if (dunk) chance = LAYUP.dunkChance;
+    if (dunk) chance = LAYUP.dunkChance * (asked && space < LAYUP.dunkOpenDist ? 0.72 : 1); // contestada erra mais
     else if (blocked) {
       kind = 'floater';
       label = big ? 'GANCHO' : 'FLUTUANTE';
@@ -2602,6 +2637,7 @@ export default class GameScene extends Phaser.Scene {
       if (s.kind !== 'ft') s.shooter.heat = Math.max(0, (s.shooter.heat || 0) - 0.3);
       if (s.kind !== 'ft' && s.shooter === this.pg) this.badgeXP(-0.7);
       if (s.three) s.shooter.threeStreak = 0;
+      if (s.shooter === this.pg) this.survStreakBreak(s.three ? 'chutador' : s.kind === 'layup' || s.kind === 'dunk' ? 'infiltrador' : null);
       this.pendingEnd = false;
       if (s.kind === 'ft') {
         this.pendingShot = null;
@@ -2696,8 +2732,11 @@ export default class GameScene extends Phaser.Scene {
         if (isFT) this.stats.ftm = (this.stats.ftm || 0) + 1;
         else this.stats.fgm++;
         if (s.three) this.stats.tpm++;
+        if (!isFT) this.survStreakHit(s.three ? 'chutador' : s.kind === 'layup' || s.kind === 'dunk' ? 'infiltrador' : null);
       } else if (!isFT && this.assist && this.assist.player === s.shooter && this.time.now - this.assist.time < OFFENSE.assistWindow * 1000) {
         this.stats.ast++;
+        this.possAssist = true;
+        this.survStreakHit('passador');
         this.gradeAdd(GRADE.assist);
         this.addHeat(this.pg, 0.6); // o maestro também pega fogo distribuindo
         this.badgeXP(0.5);
