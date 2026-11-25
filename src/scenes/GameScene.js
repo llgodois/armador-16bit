@@ -1358,7 +1358,7 @@ export default class GameScene extends Phaser.Scene {
         if (this.stepBack > 0) {
           this.stepBack -= dt;
           u.moveDir(u.stepDir.x, u.stepDir.y, u.speed * 2.2, dt * 3);
-        } else u.moveDir(0, 0, 0, dt * 3);
+        } else u.moveDir(0, 0, 0, dt * (this.gatherBrake || 3)); // 3 = freia na hora (o 3D usa menos: carrega o embalo)
         u.setPose('shoot', 0.1);
         u.lookAt = this.basket;
         this.regenStamina(dt);

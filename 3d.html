@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Armador 64</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0b0b14;
+        overflow: hidden;
+      }
+      /* 3D embaixo (resolução baixa, ampliada sem suavizar = visual 64-bit) */
+      #v3d, #v3d-ov {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        display: none;
+      }
+      #v3d-ov { pointer-events: none; }
+      /* Phaser por cima: menus e HUD (fundo transparente durante a partida) */
+      #game {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+      }
+      #game canvas {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="v3d"></canvas>
+    <canvas id="v3d-ov"></canvas>
+    <div id="game"></div>
+    <script type="module" src="./src/v3d/main3d.js"></script>
+  </body>
+</html>

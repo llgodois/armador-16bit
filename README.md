@@ -12,6 +12,12 @@ npm run dev        # http://localhost:5173
 npm run build      # gera dist/ para GitHub Pages / Netlify
 ```
 
+## Armador 64 (versão 3D, protótipo)
+
+`3d.html` (em dev: http://localhost:5173/3d.html) roda **a mesma partida** em 3D low-poly com Three.js.
+Menus, regras, IA e HUD são os do 16-bit; o código do 3D fica todo em `src/v3d/` e só lê o estado da `GameScene`
+(a câmera 2D da partida é escondida). O 16-bit (`index.html`) não depende de nada do 3D.
+
 ## Fluxo
 
 Título (menu) → **Monte seu jogo** (seu time, adversário, estilo do armador) → partida contínua → fim de jogo.
