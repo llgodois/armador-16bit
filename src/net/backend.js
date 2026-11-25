@@ -55,7 +55,7 @@ const blank = (name, pinHash) => ({ name, pin_hash: pinHash, coins: 0, unlocked:
 // Entra (ou cria a conta se o nome é novo). Retorna { ok, profile, created, error, offline }.
 export async function login(rawName, pin) {
   const name = rawName.trim().toUpperCase();
-  if (name.length < 2) return { ok: false, error: 'NOME COM 2 LETRAS OU MAIS' };
+  if (name.length < 2) return { ok: false, error: 'APELIDO COM 2 LETRAS OU MAIS' };
   if (!/^\d{4}$/.test(pin)) return { ok: false, error: 'O PIN TEM 4 NUMEROS' };
   const pinHash = await hashPin(name, pin);
   writeLS(LAST_NAME, name);

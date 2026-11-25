@@ -58,6 +58,7 @@ export default class CompetitiveScene extends Phaser.Scene {
   pageMenu() {
     const W = VIEW.W;
     this.header('COMPETITIVO');
+    this.T(W / 2, 40, 'SEMPRE CONTRA O CHICAGO BULLS 96 (JORDAN)', { origin: [0.5, 0], color: 0xff9a4d });
     this.T(W / 2, 52, 'SOBREVIVENCIA: SO ATAQUE, 3 VIDAS', { origin: [0.5, 0], color: 0x6fa0ff });
     this.T(W / 2, 64, 'POSSE SEM PONTUAR = MENOS 1 VIDA', { origin: [0.5, 0], color: 0xd8d0ee });
     this.T(W / 2, 76, 'RANKING = SUAS CESTAS + SUAS ASSISTENCIAS', { origin: [0.5, 0], color: 0xd8d0ee });

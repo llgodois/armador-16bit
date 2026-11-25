@@ -22,6 +22,7 @@ export default class LoginScene extends Phaser.Scene {
     sfx.music('menu');
     this.name = lastName() || '';
     this.pin = ['0', '0', '0', '0'];
+    this.filled = [false, false, false, false]; // quais números do PIN já foram digitados
     this.pinTyped = 0;
     this.pinPos = 0;
     this.focus = this.name ? 1 : 0; // 0 nome, 1 pin, 2 entrar, 3 sem conta
@@ -30,32 +31,66 @@ export default class LoginScene extends Phaser.Scene {
     this.busy = false;
     this.g = this.add.graphics();
     this.dyn = [];
-    this.input.keyboard.on('keydown', (ev) => this.onKey(ev));
+    // teclado lido direto do navegador (o repasse do Phaser às vezes duplicava teclas no PIN)
+    const onDown = (ev) => {
+      if (!this.sys.isActive()) return;
+      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', ' '].includes(ev.key)) ev.preventDefault();
+      this.onKey(ev);
+    };
+    window.addEventListener('keydown', onDown);
+    this.events.once('shutdown', () => window.removeEventListener('keydown', onDown));
+    // mouse/toque: clique no apelido, em cada caixa do PIN ou nos botões
+    this.input.on('pointerdown', (ptr) => this.onClick(ptr.x, ptr.y));
     this.draw();
   }
 
-  onKey(ev) {
+  onKey(ev, again = false) {
     if (this.busy) return;
+    // o mesmo evento de tecla às vezes chega duas vezes: conta só uma
+    if (!again) {
+      if (ev === this.lastEv || (ev.timeStamp && ev.timeStamp === this.lastTs && ev.key === this.lastKey)) return;
+      this.lastEv = ev;
+      this.lastTs = ev.timeStamp;
+      this.lastKey = ev.key;
+    }
     const k = ev.key;
     if (k === 'ArrowDown' && this.focus !== 1) this.focus = (this.focus + 1) % 4;
     else if (k === 'ArrowUp' && this.focus !== 1 && this.focus !== 0) this.focus = (this.focus + 3) % 4;
     else if (k === 'Tab') this.focus = (this.focus + 1) % 4;
     else if (this.focus === 0) {
       const names = knownNames();
+      // apelido + ENTER já leva para o PIN; números depois de um apelido pronto também
+      if (/^\d$/.test(k)) {
+        // número no apelido = começou o PIN: pula para as caixas do PIN
+        if (this.name.length < 2) {
+          this.msg = 'PRIMEIRO O APELIDO (SO LETRAS)';
+          this.msgColor = 0xff9a4d;
+          return this.draw();
+        }
+        this.focus = 1;
+        return this.onKey(ev, true);
+      }
       if ((k === 'ArrowUp' || k === 'ArrowDown') && names.length) {
         const i = names.indexOf(this.name);
         this.name = names[(i + (k === 'ArrowDown' ? 1 : -1) + names.length) % names.length];
       } else if (k === 'ArrowUp') this.focus = 3;
       else if (k === 'Backspace') this.name = this.name.slice(0, -1);
-      else if (/^[a-zA-Z0-9]$/.test(k) && this.name.length < 12) this.name += k.toUpperCase();
+      else if (/^[a-zA-Z]$/.test(k) && this.name.length < 12) this.name += k.toUpperCase();
       else if (k === 'Enter') this.focus = 1;
       else if (k === 'Escape') this.name = '';
     } else if (this.focus === 1) {
       if (/^\d$/.test(k)) {
         this.pin[this.pinPos] = k;
-        this.pinPos = Math.min(3, this.pinPos + 1);
+        this.filled[this.pinPos] = true;
         this.pinTyped++;
-      } else if (k === 'Backspace') this.pinPos = Math.max(0, this.pinPos - 1);
+        // completou os 4: vai para ENTRAR (ENTER confirma)
+        if (this.filled.every(Boolean) && this.pinPos === 3) this.focus = 2;
+        else this.pinPos = Math.min(3, this.pinPos + 1);
+      } else if (k === 'Backspace') {
+        if (!this.filled[this.pinPos] && this.pinPos > 0) this.pinPos--;
+        this.filled[this.pinPos] = false;
+        this.pin[this.pinPos] = '0';
+      }
       else if (k === 'ArrowLeft') this.pinPos = Math.max(0, this.pinPos - 1);
       else if (k === 'ArrowRight') this.pinPos = Math.min(3, this.pinPos + 1);
       else if (k === 'ArrowUp' || k === 'ArrowDown') {
@@ -63,6 +98,7 @@ export default class LoginScene extends Phaser.Scene {
         else {
           const d = (Number(this.pin[this.pinPos]) + (k === 'ArrowUp' ? 1 : 9)) % 10;
           this.pin[this.pinPos] = String(d);
+          this.filled[this.pinPos] = true;
           this.pinTyped++;
         }
       } else if (k === 'Enter') return this.submit();
@@ -75,7 +111,31 @@ export default class LoginScene extends Phaser.Scene {
     this.draw();
   }
 
+  // regiões clicáveis (coordenadas da tela do jogo)
+  onClick(x, y) {
+    if (this.busy) return;
+    const W = VIEW.W;
+    if (x < W / 2 - 130 || x > W / 2 + 130) return;
+    if (y >= 84 && y < 108) this.focus = 0;
+    else if (y >= 112 && y < 136) {
+      this.focus = 1;
+      const i = Math.floor((x - (W / 2 - 42)) / 18);
+      if (i >= 0 && i < 4) this.pinPos = i;
+    } else if (y >= 142 && y < 166) return this.submit();
+    else if (y >= 168 && y < 192) return this.enter(null);
+    else return;
+    sfx.play('select');
+    this.draw();
+  }
+
   async submit() {
+    if (!this.filled.every(Boolean)) {
+      this.msg = 'DIGITE OS 4 NUMEROS DO PIN';
+      this.msgColor = 0xff9a4d;
+      this.focus = 1;
+      this.pinPos = this.filled.indexOf(false);
+      return this.draw();
+    }
     sfx.unlock();
     this.busy = true;
     this.msg = 'ENTRANDO...';
@@ -120,9 +180,14 @@ export default class LoginScene extends Phaser.Scene {
     T(W / 2 - 114, 120, 'PIN', { color: this.focus === 1 ? 0xffe14d : 0x7a7290 });
     this.pin.forEach((d, i) => {
       const x = W / 2 - 40 + i * 18;
-      g.fillStyle(this.focus === 1 && this.pinPos === i ? 0xffe14d : 0x3a3352, 1).fillRect(x - 2, 116, 13, 14);
-      T(x + 4, 119, this.focus === 1 && this.pinPos === i ? d : '*', { origin: [0.5, 0], color: 0x0b0b14 });
+      const cur = this.focus === 1 && this.pinPos === i;
+      g.fillStyle(cur ? 0xffe14d : this.filled[i] ? 0x6fa0ff : 0x3a3352, 1).fillRect(x - 2, 116, 13, 14);
+      // digitado = *, vazio = _, na caixa atual mostra o número
+      const ch = cur && this.filled[i] ? d : this.filled[i] ? '*' : '_';
+      T(x + 4, 119, ch, { origin: [0.5, 0], color: cur ? 0x0b0b14 : 0xffffff });
     });
+    if (this.focus === 0) T(W / 2 + 122, 92, 'ENTER: PIN', { origin: [1, 0], color: 0x7a7290 });
+    if (this.focus === 1) T(W / 2 + 122, 120, `${this.filled.filter(Boolean).length}/4`, { origin: [1, 0], color: 0x7a7290 });
     row(2, 146);
     T(W / 2, 150, 'ENTRAR / CRIAR CONTA', { origin: [0.5, 0], color: this.focus === 2 ? 0x6dff6d : 0xd8d0ee });
     row(3, 172);

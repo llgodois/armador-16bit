@@ -44,7 +44,8 @@ export default class GameScene extends Phaser.Scene {
     const setup = data && data.home ? data : this.registry.get('setup') || { home: 'ondas', away: 'astros', build: 'chutador' };
     this.registry.set('setup', setup);
     this.homeTeam = teamById(setup.home);
-    this.awayTeam = teamById(setup.away);
+    // competitivo: sempre contra o Chicago Bulls 96 (mesmo adversário para todo mundo no ranking)
+    this.awayTeam = teamById(setup.survival ? 'touros96' : setup.away);
     // Franquia: elencos montados pelo dono do time (trocas, draft, evolução)
     if (setup.roster) this.homeTeam = { ...this.homeTeam, players: setup.roster, bench: setup.bench };
     if (setup.awayRoster) this.awayTeam = { ...this.awayTeam, players: setup.awayRoster, bench: undefined };

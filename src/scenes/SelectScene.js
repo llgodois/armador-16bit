@@ -60,7 +60,12 @@ export default class SelectScene extends Phaser.Scene {
     };
     if (this.team('home') === this.team('away')) this.sel.away = (this.sel.home + 1) % FRANCHISES.length;
     // o estilo (build) não é escolhido: é o do armador (ponto forte dele)
-    this.steps = this.champMode ? ['home', 'pg', 'rules', 'go'] : ['home', 'pg', 'away', 'rules', 'go'];
+    this.steps = this.champMode || this.survival ? ['home', 'pg', 'rules', 'go'] : ['home', 'pg', 'away', 'rules', 'go'];
+    // COMPETITIVO: o adversário é sempre o mesmo — Chicago Bulls 96 (Jordan) — para o ranking ser justo
+    if (this.survival) {
+      this.sel.away = FRANCHISES.findIndex((t) => t.id === 'touros');
+      this.sel.awayH = true;
+    }
     this.step = 0;
     this.enterStep();
 
@@ -180,6 +185,10 @@ export default class SelectScene extends Phaser.Scene {
     if ((s === 'home' || s === 'away') && c.focus !== 'ver') {
       if (c.focus === 'tabs') c.focus = 'grid';
       else c.focus = 'ver';
+      return this.refresh();
+    }
+    if (s === 'home' && this.survival && this.team('home') === this.team('away')) {
+      this.flash = 'NO COMPETITIVO O ADVERSARIO E O BULLS 96: ESCOLHA OUTRO TIME';
       return this.refresh();
     }
     if (s === 'away' && this.team('away') === this.team('home')) {
@@ -414,6 +423,7 @@ export default class SelectScene extends Phaser.Scene {
       this.T(W / 2 + 40, 72, 'X', { scale: 2, origin: [0.5, 0], color: 0xffffff });
       this.sprite(W - 70, 140, playerTexKey(away.id, 0), 3);
     } else this.T(W - 40, 72, 'CHAVE SORTEADA', { origin: [1, 0], color: 0x6fa0ff });
+    if (this.survival) this.T(W / 2, 160, 'ADVERSARIO FIXO DO COMPETITIVO: O BULLS DE 96', { origin: [0.5, 0], color: 0xff9a4d });
     const lines = [
       `ESTILO ${this.buildOf().name} (DO ARMADOR)  -  ARREMESSO ${SHOT_PROFILES[PROFILE_IDS[this.sel.profile]].name}`,
       `${DIFFICULTY[DIFF_IDS[this.sel.diff]].name}  -  ${MODES[MODE_IDS[this.sel.mode]].name}${this.champMode ? '  -  ' + (SERIES[this.sel.series] === 1 ? 'JOGO UNICO' : 'MELHOR DE 3') : ''}`,
