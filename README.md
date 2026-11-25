@@ -38,6 +38,12 @@ O jogo não para: depois de cesta há uma reposição rápida pela linha de fund
 | L | deslize rápido |
 | J | pedir dobra no homem da bola |
 
+## Jogar online
+
+**https://llgodois.github.io/armador-16bit/** (funciona em qualquer PC com navegador; o ranking do Competitivo é compartilhado).
+
+Para publicar uma versão nova: rode `.\publicar.ps1` (gera o jogo e envia para a branch `gh-pages`).
+
 ## Como abrir
 
 Dê dois cliques em **Jogar.bat** (liga o servidor e abre o navegador). Ou, no terminal, dentro da pasta: `npm.cmd run dev`.
