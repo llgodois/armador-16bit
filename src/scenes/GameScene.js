@@ -85,7 +85,7 @@ export default class GameScene extends Phaser.Scene {
 
     // a cena é reaproveitada entre partidas: zera tudo que não é recriado abaixo
     Object.assign(this, {
-      contestCtl: null, replay: null, pendingEnd: false, trainRead: false, userStreak: 0, lastPass: null,
+      contestCtl: null, replay: null, pendingEnd: false, lessonHold: false, lessonFired: false, lessonPassing: false, trainRead: false, userStreak: 0, lastPass: null,
       combo: 0, lastCross: 0, lastUserPlay: null, stepBack: 0, play: null, inbound: null, pendingShot: null, recTick: 0,
     });
     this.street = !!setup.street;
@@ -260,21 +260,8 @@ export default class GameScene extends Phaser.Scene {
     this.events.emit('banner', `${this.homeTeam.name} x ${this.awayTeam.name}`, this.street ? 'Rua 3x3 - primeiro a 21' : `Primeiro a ${GAME.targetScore} vence`, 0xffe14d, GAME.introTime);
     sfx.play('whistle');
     // lição de mecânica na DEFESA: começa com a bola do adversário
-    if (this.training && this.training.def) {
-      this.setOffense('away');
-      // ataque adversário já montado na meia quadra dele; cada defensor perto do seu homem
-      for (const p of this.away) {
-        const sp = this.slot(BASE_SLOTS[p.role]);
-        p.setPosition(sp.x, sp.y);
-      }
-      this.ball.give(this.away[0]);
-      this.defenseAI.reset(false);
-      const B = this.basket;
-      for (const d of this.home) {
-        const m = this.defenseAI.manOf(d);
-        if (m) d.setPosition(m.x + (B.x - m.x) * 0.15, m.y + (B.y - m.y) * 0.15);
-      }
-    }
+    this.lessonTries = 1;
+    if (this.training && this.training.def) this.resetDefLesson();
     if (this.training) this.time.delayedCall(300, () => this.events.emit('toast', this.training.tip, 0x6fa0ff));
     if (this.contest) {
       this.contestCtl = new Contest(this, this.contest);
@@ -455,6 +442,102 @@ export default class GameScene extends Phaser.Scene {
       this.scene.stop('HUD');
       this.scene.start('Training', { tab: 'lessons', result: { ok: stars > 0, title: `${stars} ESTRELA${stars === 1 ? '' : 'S'}`, lines } });
     });
+  }
+
+  // ------------------------------------------------------------------ lições de DEFESA: o jogo monta a situação
+  // O ataque espera parado; aí o seu homem arremessa (mão alta), infiltra em você (falta de ataque)
+  // ou um colega dele chuta (box out). Sem o movimento, a lição recomeça (até 3 tentativas).
+  resetDefLesson() {
+    this.pendingShot = null;
+    this.setOffense('away');
+    for (const p of this.away) {
+      const sp = this.slot(BASE_SLOTS[p.role]);
+      p.setPosition(sp.x, sp.y);
+      p.stop();
+      p.drive = null;
+    }
+    this.ball.give(this.away[0]);
+    this.defenseAI.reset(false);
+    const B = this.basket;
+    for (const d of this.home) {
+      d.stop();
+      const m = this.defenseAI.manOf(d);
+      if (m) d.setPosition(m.x + (B.x - m.x) * 0.15, m.y + (B.y - m.y) * 0.15);
+    }
+    this.lessonT = 0;
+    this.lessonFired = false;
+    this.lessonHold = true; // o ataque não decide nada até a situação ser montada
+  }
+
+  retryDefLesson() {
+    this.lessonTries++;
+    this.events.emit('toast', `DE NOVO! TENTATIVA ${this.lessonTries}/3 - ${this.training.tip}`, 0xff9a4d);
+    this.resetDefLesson();
+  }
+
+  updateDefLesson(dt) {
+    if (this.offSide !== 'away') return;
+    this.lessonT = (this.lessonT || 0) + dt;
+    const id = this.training.id;
+    const u = this.user;
+    const man = this.defenseAI.manOf(u);
+    const b = this.ball;
+    if (!man || this.lessonFired || this.lessonT < 1.2) return;
+    const B = this.basket;
+    if (id === 'm_troca') {
+      this.lessonFired = true;
+      this.lessonHold = false;
+      return;
+    }
+    // a bola precisa estar com o seu homem (mão alta / falta de ataque) ou com outro (box out)
+    const wantHolder = id === 'm_box' ? this.away.find((p) => p !== man && p.role !== 'C') : man;
+    if (b.state !== 'held') return;
+    if (b.holder !== wantHolder) {
+      if (b.holder.team === 'away' && !this.lessonPassing) {
+        this.lessonPassing = true;
+        this.doPass(b.holder, wantHolder);
+        this.time.delayedCall(800, () => (this.lessonPassing = false));
+      }
+      return;
+    }
+    this.lessonFired = true;
+    if (id === 'm_mao') {
+      // você colado nele; ele arremessa em seguida
+      u.setPosition(man.x + (B.x - man.x) * 0.12, man.y + (B.y - man.y) * 0.12);
+      this.events.emit('toast', 'ELE VAI ARREMESSAR: APERTE U (Y) AGORA!', 0xffe14d);
+      this.floatText(man.x, man.y - man.headY - 14, '!', 0xff7b6b);
+      this.time.delayedCall(1300, () => {
+        if (this.ball.holder === man) {
+          this.lessonHold = false;
+          this.aiShoot(man);
+        }
+      });
+    } else if (id === 'm_carga') {
+      // você parado no caminho entre ele e a cesta; ele infiltra reto em você
+      const dx = B.x - man.x;
+      const dy = B.y - man.y;
+      const l = Math.hypot(dx, dy) || 1;
+      u.setPosition(man.x + (dx / l) * 26, man.y + (dy / l) * 26);
+      u.stop();
+      u.stillT = 0;
+      this.events.emit('toast', 'FIQUE PARADO NA FRENTE DELE!', 0xffe14d);
+      this.time.delayedCall(1300, () => {
+        if (this.ball.holder === man) {
+          this.lessonHold = false;
+          man.drive = { t: 0, off: 0, moved: true };
+        }
+      });
+    } else if (id === 'm_box') {
+      // você perto do seu homem; um colega dele chuta de meia distância
+      u.setPosition(man.x + (B.x - man.x) * 0.12, man.y + (B.y - man.y) * 0.12);
+      this.events.emit('toast', 'VAI TER ARREMESSO: QUANDO A BOLA SUBIR, APERTE L (B)!', 0xffe14d);
+      this.time.delayedCall(1300, () => {
+        if (this.ball.holder === wantHolder) {
+          this.lessonHold = false;
+          this.aiShoot(wantHolder);
+        }
+      });
+    }
   }
 
   // ------------------------------------------------------------------ takeover (pegando fogo)
@@ -741,6 +824,7 @@ export default class GameScene extends Phaser.Scene {
     // treino: a lição acaba quando a posse passa para o adversário
     // lição de defesa: acabou bem quando a bola volta para você
     if (this.training && this.training.def && side === 'home' && this.offSide === 'away' && this.state === 'live') {
+      if (!this.mechDone && this.lessonTries < 3) return this.retryDefLesson();
       this.endTraining(true);
       return;
     }
@@ -969,6 +1053,7 @@ export default class GameScene extends Phaser.Scene {
       this.updateClear(dt);
       this.checkStepOut();
       if (this.survival) this.updateSurvival();
+      if (this.training && this.training.def) this.updateDefLesson(dt);
       this.updateLayups(dt);
       if (this.userOnDefense) this.updateUserDefense(dt);
       else this.updateUserOffense(dt);
@@ -1592,6 +1677,7 @@ export default class GameScene extends Phaser.Scene {
       speed *= 1.3;
       this.floatText(from.x, from.y - from.headY - 20, 'DE PRIMEIRA', 0x6fa0ff);
     }
+    if (opts.bounce) this.ball.bounce = true;
     const ic = this.defenseAI.rollIntercept(from, to, mult);
     this.ball.pass(from, to, ic ? ic.defender : null, ic ? ic.point : null, speed);
     from.pose = null;
@@ -1750,7 +1836,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.padPlay !== null && DEF_SCHEMES[this.padPlay]) this.setUserScheme(this.padPlay);
     // Y/Triângulo (ou U) na defesa: MÃO ALTA — contesta sem sair do chão (não cai em finta, não faz falta)
     if (this.btn.LOB.just) {
-      u.handsT = this.time.now + 700;
+      u.handsT = this.time.now + 900;
+      u.setPose('shoot', 0.9); // braços levantados
       this.floatText(u.x, u.y - u.headY - 6, 'MAO ALTA', 0x6fa0ff);
     }
     // C / LB na defesa: pedir TROCA de marcação (ou, perdendo no fim do jogo por tempo, falta intencional)
@@ -2158,7 +2245,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   shotMods(shooter, chance) {
-    if (this.userOnDefense && this.user.handsT > this.time.now && Math.hypot(this.user.x - shooter.x, this.user.y - shooter.y) < 26) chance *= 0.9;
+    if (this.userOnDefense && this.user.handsT > this.time.now && Math.hypot(this.user.x - shooter.x, this.user.y - shooter.y) < 30) {
+      chance *= 0.82;
+      if (!shooter.contestShown || this.time.now - shooter.contestShown > 500) {
+        shooter.contestShown = this.time.now;
+        this.floatText(this.user.x, this.user.y - this.user.headY - 16, 'CONTESTOU!', 0x6dff6d);
+      }
+    }
     if (this.userOnDefense && this.userJumpT > 0 && Math.hypot(this.user.x - shooter.x, this.user.y - shooter.y) < 24) {
       chance *= USER_DEFENSE.contestBonus;
     }
@@ -2526,7 +2619,10 @@ export default class GameScene extends Phaser.Scene {
       return this.finishGame();
     }
     if (this.training && team === 'home' && !this.training.def) return this.endTraining(true);
-    if (this.training && team === 'away' && this.training.def) return this.endTraining(false);
+    if (this.training && team === 'away' && this.training.def) {
+      if (!this.mechDone && this.lessonTries < 3) return this.retryDefLesson();
+      return this.endTraining(false);
+    }
     // cesta com falta: lance livre extra ("and one")
     if (s.foul) return this.startFreeThrows(s.shooter, 1, 'Cesta e falta! +1 lance livre');
     // lance livre: ainda tem outro?

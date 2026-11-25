@@ -53,6 +53,10 @@ export default class Ball extends Phaser.Events.EventEmitter {
     // ponte aérea: passe alto em arco (o recebedor finaliza no ar)
     this.wasLob = !!this.lob;
     this.lob = false;
+    // passe quicado: a bola bate no chão no meio do caminho
+    this.wasBounce = !!this.bounce && !this.wasLob;
+    this.bounce = false;
+    this.bounced = false;
     this.pass0 = Math.hypot(to.x - this.x, to.y - this.y) || 1;
   }
 
@@ -179,7 +183,15 @@ export default class Ball extends Phaser.Events.EventEmitter {
     }
     this.x += (dx / d) * step;
     this.y += (dy / d) * step;
-    if (this.wasLob) this.z = 14 + 26 * Math.sin(Math.PI * Math.min(1, 1 - d / this.pass0));
+    const t = Math.min(1, 1 - d / this.pass0);
+    if (this.wasLob) this.z = 14 + 26 * Math.sin(Math.PI * t);
+    else if (this.wasBounce) {
+      this.z = 12 * Math.abs(1 - 2 * t);
+      if (!this.bounced && t >= 0.5) {
+        this.bounced = true;
+        this.emit('bounce', null);
+      }
+    }
     else this.z = lerp(this.z, PASS.height, 1 - Math.exp(-6 * dt));
     const i = this.interceptor;
     if (i && Math.hypot(i.x - this.x, i.y - this.y) < PASS.catchRadius + 4) {

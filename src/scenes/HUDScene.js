@@ -114,14 +114,39 @@ export default class HUDScene extends Phaser.Scene {
     this.bannerSub.setVisible(false);
   }
 
+  // fila de avisos: cada aviso fica pelo menos 1,2 s antes do próximo (a dica do técnico não some na hora)
   showToast(text, color = 0xffffff) {
+    const now = this.time.now;
+    if (this.toast.visible && now - (this.toastAt || 0) < 1200) {
+      this.toastQueue = (this.toastQueue || []).filter((q) => q.text !== text).slice(-2);
+      this.toastQueue.push({ text, color });
+      if (!this.queueTimer) this.queueTimer = this.time.delayedCall(1200 - (now - this.toastAt), () => this.nextToast());
+      return;
+    }
+    this.toastAt = now;
+    this.drawToast(text, color);
+  }
+
+  nextToast() {
+    this.queueTimer = null;
+    const q = (this.toastQueue || []).shift();
+    if (q) {
+      this.toastAt = this.time.now;
+      this.drawToast(q.text, q.color);
+      if (this.toastQueue.length) this.queueTimer = this.time.delayedCall(1200, () => this.nextToast());
+    }
+  }
+
+  drawToast(text, color = 0xffffff) {
+    // tempo para ler: textos longos (dica do técnico, lições) ficam mais na tela
+    const dur = Math.max(1400, String(text).length * 75);
     this.toast.setText(text).setColor(color).setVisible(true);
     const w = this.toast.width + 12;
     this.toastBg.clear();
     this.toastBg.fillStyle(0x10101a, 0.8).fillRect(Math.round(VIEW.W / 2 - w / 2), 33, Math.round(w), 14);
     this.toastBg.fillStyle(color, 1).fillRect(Math.round(VIEW.W / 2 - w / 2), 46, Math.round(w), 1);
     if (this.toastTimer) this.toastTimer.remove();
-    this.toastTimer = this.time.delayedCall(1300, () => {
+    this.toastTimer = this.time.delayedCall(dur, () => {
       this.toast.setVisible(false);
       this.toastBg.clear();
     });

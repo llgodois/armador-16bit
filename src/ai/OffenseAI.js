@@ -102,6 +102,11 @@ export default class OffenseAI {
       p.moveDir(0, 0, 0, dt);
       return;
     }
+    // lição de defesa: o ataque espera parado até a situação ser montada
+    if (g.lessonHold && p.team === 'away') {
+      p.moveDir(0, 0, 0, dt);
+      return;
+    }
     if (g.inbound) {
       // reposição: caminha até o ponto e espera parado até passar
       if (g.inbound.walk) p.seek(g.inbound.spot, p.run(p.speed, true), dt, null, 4);
