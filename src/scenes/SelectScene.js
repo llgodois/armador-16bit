@@ -67,6 +67,9 @@ export default class SelectScene extends Phaser.Scene {
       this.sel.awayH = true;
     }
     this.step = 0;
+    // a cena é reaproveitada entre partidas: zera a trava de 'já iniciou' e a mensagem
+    this.started = false;
+    this.flash = null;
     this.enterStep();
 
     const bg = this.add.graphics();
@@ -431,9 +434,9 @@ export default class SelectScene extends Phaser.Scene {
     this.T(110, 100, `ARMADOR: ${info.name}`, { color: 0xffe14d });
     if (!this.champMode) {
       const away = this.team('away');
-      this.T(W - 40, 70, away.name, { scale: 2, origin: [1, 0], color: teamHudColor(away) });
-      this.T(W - 40, 88, `${away.city}${away.era ? '  ' + away.era : ''}`, { origin: [1, 0], color: 0xb8b0d0 });
-      this.T(W / 2 + 40, 72, 'X', { scale: 2, origin: [0.5, 0], color: 0xffffff });
+      this.T(W - 110, 70, away.name, { scale: 2, origin: [1, 0], color: teamHudColor(away) });
+      this.T(W - 110, 88, `${away.city}${away.era ? '  ' + away.era : ''}`, { origin: [1, 0], color: 0xb8b0d0 });
+      this.T(W / 2, 124, 'X', { scale: 2, origin: [0.5, 0], color: 0xffffff });
       this.sprite(W - 70, 140, playerTexKey(away.id, 0), 3);
     } else this.T(W - 40, 72, 'CHAVE SORTEADA', { origin: [1, 0], color: 0x6fa0ff });
     if (this.survival) this.T(W / 2, 160, 'ADVERSARIO FIXO DO COMPETITIVO: O BULLS DE 96', { origin: [0.5, 0], color: 0xff9a4d });
