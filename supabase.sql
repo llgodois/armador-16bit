@@ -8,8 +8,10 @@ create table if not exists players (
   unlocked   text[] not null default '{}',
   best       integer not null default 0,
   games      integer not null default 0,
+  team_best  jsonb not null default '{}',   -- recorde no Competitivo por franquia (libera os históricos)
   created_at timestamptz not null default now()
 );
+alter table players add column if not exists team_best jsonb not null default '{}';
 
 create table if not exists scores (
   id         bigserial primary key,

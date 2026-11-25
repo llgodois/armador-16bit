@@ -95,7 +95,8 @@ export default class GameScene extends Phaser.Scene {
     this.survPoss = 0;
     this.survOk = 0;
     this.possPts = 0;
-    if (this.survival) this.difficulty = { ...this.difficulty };
+    // competitivo: sempre no DIFÍCIL (igual para todo mundo no ranking)
+    if (this.survival) this.difficulty = { ...DIFFICULTY.dificil };
     this.contest = setup.contest || null; // 'three' | 'dunk' (fim de semana das estrelas)
     this.narrator = new Commentary(this);
     sfx.music('game');
@@ -1065,7 +1066,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === 'done') return;
     this.state = 'done';
     const st = this.stats;
-    const result = { score: st.fgm + st.ast, fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name };
+    const result = { score: st.fgm + st.ast, fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name, team: this.homeTeam.era ? null : this.homeTeam.id };
     this.events.emit('banner', 'FIM!', `${result.score} PONTOS`, 0xffe14d, 1.4);
     sfx.play('buzzer');
     this.time.delayedCall(1500, () => {

@@ -6,9 +6,15 @@
 // =====================================================================
 import { SUPABASE } from './config.js';
 
-const LOCAL_PROFILES = 'armador_perfis';
-const LOCAL_RANKING = 'armador_ranking';
-const LAST_NAME = 'armador_ultimo_nome';
+// v2: contas e ranking zerados em 25/11/2026 (os dados antigos deste navegador são apagados)
+const LOCAL_PROFILES = 'armador_perfis_v2';
+const LOCAL_RANKING = 'armador_ranking_v2';
+const LAST_NAME = 'armador_ultimo_nome_v2';
+try {
+  ['armador_perfis', 'armador_ranking', 'armador_ultimo_nome'].forEach((k) => localStorage.removeItem(k));
+} catch {
+  /* ignore */
+}
 
 export const isOnline = () => !!(SUPABASE.url && SUPABASE.anonKey);
 
@@ -50,7 +56,7 @@ async function rest(path, { method = 'GET', body, prefer } = {}) {
   return txt ? JSON.parse(txt) : null;
 }
 
-const blank = (name, pinHash) => ({ name, pin_hash: pinHash, coins: 0, unlocked: [], best: 0, games: 0 });
+const blank = (name, pinHash) => ({ name, pin_hash: pinHash, coins: 0, unlocked: [], best: 0, games: 0, team_best: {} });
 
 // Entra (ou cria a conta se o nome é novo). Retorna { ok, profile, created, error, offline }.
 export async function login(rawName, pin) {
@@ -84,7 +90,7 @@ export async function login(rawName, pin) {
 
 // Salva moedas / desbloqueados / recorde do perfil.
 export async function saveProfile(p) {
-  const patch = { coins: p.coins, unlocked: p.unlocked, best: p.best, games: p.games };
+  const patch = { coins: p.coins, unlocked: p.unlocked, best: p.best, games: p.games, team_best: p.team_best || {} };
   if (isOnline()) {
     try {
       await rest(`players?name=eq.${encodeURIComponent(p.name)}`, { method: 'PATCH', body: patch });

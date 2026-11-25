@@ -4,7 +4,7 @@ import PixelText from '../ui/PixelText.js';
 import { drawPanel, makeMenu } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
 import { LEGENDS } from '../data/legends.js';
-import { UNLOCKS, FREE_LEGENDS, isUnlocked, unlockOf, checkChallenges } from '../data/unlocks.js';
+import { UNLOCKS, FREE_LEGENDS, isUnlocked, unlockOf, checkChallenges, recordTeamScore } from '../data/unlocks.js';
 import { saveProfile, submitScore, topScores, isOnline } from '../net/backend.js';
 
 // =====================================================================
@@ -163,12 +163,15 @@ export default class CompetitiveScene extends Phaser.Scene {
     const coins = r.score * COIN_PER_POINT;
     let record = false;
     let got = [];
+    let teams = [];
     if (p) {
       record = r.score > (p.best || 0);
       p.coins += coins;
       p.games = (p.games || 0) + 1;
       if (record) p.best = r.score;
       got = checkChallenges(p, r);
+      // recorde com o time ATUAL libera a versão histórica dele (20+ pontos)
+      teams = recordTeamScore(p, r.team, r.score);
     }
     this.header('FIM DE JOGO', 0x6dff6d);
     this.T(W / 2, 46, `${r.score} PONTOS`, { scale: 3, origin: [0.5, 0], color: 0xffe14d });
@@ -185,6 +188,10 @@ export default class CompetitiveScene extends Phaser.Scene {
       for (const id of got) {
         const l = LEGENDS.find((x) => x.id === id);
         this.T(W / 2, y, `DESAFIO CUMPRIDO: ${l.name.toUpperCase()} LIBERADO!`, { origin: [0.5, 0], color: 0xff6bd5 });
+        y += 12;
+      }
+      for (const t of teams) {
+        this.T(W / 2, y, `TIME HISTORICO LIBERADO: ${t.name.toUpperCase()}!`, { origin: [0.5, 0], color: 0xffe14d });
         y += 12;
       }
       await saveProfile(p);

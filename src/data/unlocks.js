@@ -51,3 +51,26 @@ export function checkChallenges(profile, result) {
   profile.unlocked = [...(profile.unlocked || []), ...got];
   return got;
 }
+
+// ---------------------------------------------------------------------
+//  TIMES HISTÓRICOS (fora do Arcade): para liberar a versão histórica de uma
+//  franquia, faça pelo menos 20 pontos no Competitivo com o time ATUAL dela.
+//  Se a franquia tiver mais de uma versão histórica, cada uma pede +10.
+// ---------------------------------------------------------------------
+import { HISTORIC } from './teams.js';
+export const HISTORIC_POINTS = 20;
+export function historicRequirement(team) {
+  if (!team || !team.era) return 0;
+  const eras = HISTORIC.filter((h) => h.base === team.base).sort((a, b) => b.era - a.era);
+  return HISTORIC_POINTS + 10 * Math.max(0, eras.indexOf(team));
+}
+export const teamBest = (profile, frId) => ((profile && profile.team_best) || {})[frId] || 0;
+export const isTeamUnlocked = (profile, team) => !team || !team.era || teamBest(profile, team.base) >= historicRequirement(team);
+
+// Fim de uma partida do Competitivo com um time ATUAL: guarda o recorde e diz quais históricos liberou.
+export function recordTeamScore(profile, frId, score) {
+  if (!profile || !frId) return [];
+  const before = { ...(profile.team_best || {}) };
+  profile.team_best = { ...before, [frId]: Math.max(before[frId] || 0, score) };
+  return HISTORIC.filter((h) => h.base === frId && !isTeamUnlocked({ team_best: before }, h) && isTeamUnlocked(profile, h));
+}

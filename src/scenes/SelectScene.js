@@ -10,7 +10,7 @@ import { sfx } from '../audio/sfx.js';
 import { SHOT_PROFILES } from '../game/skills.js';
 import { BADGES, badgesOf } from '../data/badges.js';
 import { createChampionship } from '../data/championship.js';
-import { isUnlocked, unlockOf } from '../data/unlocks.js';
+import { isUnlocked, unlockOf, isTeamUnlocked, historicRequirement, teamBest } from '../data/unlocks.js';
 
 const BARS = [['three', '3PT'], ['mid', 'MEI'], ['fin', 'FIN'], ['pass', 'PAS'], ['spd', 'VEL'], ['def', 'DEF']];
 const DIFF_IDS = Object.keys(DIFFICULTY);
@@ -170,7 +170,7 @@ export default class SelectScene extends Phaser.Scene {
   }
 
   rowsOf() {
-    if (this.survival) return ['profile', 'diff'];
+    if (this.survival) return ['profile']; // competitivo: dificuldade fixa no DIFICIL
     return this.champMode ? ['profile', 'diff', 'mode', 'series'] : ['profile', 'diff', 'mode'];
   }
 
@@ -185,6 +185,14 @@ export default class SelectScene extends Phaser.Scene {
     if ((s === 'home' || s === 'away') && c.focus !== 'ver') {
       if (c.focus === 'tabs') c.focus = 'grid';
       else c.focus = 'ver';
+      return this.refresh();
+    }
+    // fora do Arcade, a versão histórica precisa ser liberada no Competitivo
+    if ((s === 'home' || s === 'away') && this.locks && !isTeamUnlocked(this.registry.get('profile'), this.team(s))) {
+      const t = this.team(s);
+      const fr = FRANCHISES[this.sel[s]];
+      this.flash = `BLOQUEADO: ${historicRequirement(t)} PONTOS NO COMPETITIVO COM O ${fr.name.toUpperCase()} ATUAL (RECORDE ${teamBest(this.registry.get('profile'), fr.id)})`;
+      sfx.play('buzzer');
       return this.refresh();
     }
     if (s === 'home' && this.survival && this.team('home') === this.team('away')) {
@@ -235,7 +243,10 @@ export default class SelectScene extends Phaser.Scene {
       street: this.street,
       survival: this.survival,
     };
-    if (this.survival) setup.mode = 'pontos';
+    if (this.survival) {
+      setup.mode = 'pontos';
+      setup.diff = 'dificil';
+    }
     this.registry.set('setup', setup);
     if (this.champMode) {
       createChampionship(setup, SERIES[this.sel.series]);
@@ -327,7 +338,9 @@ export default class SelectScene extends Phaser.Scene {
     // versões
     const vy = 182;
     g.fillStyle(0x3a3352, 1).fillRect(250, vy - 4, 216, 1);
-    [['ATUAL 2025-26', 0], [h ? `HISTORICO ${h.era}` : 'HISTORICO', 1]].forEach(([label, k]) => {
+    const hLocked = h && this.locks && !isTeamUnlocked(this.registry.get('profile'), h);
+    const hLabel = h ? `HISTORICO ${h.era}${hLocked ? `  [X] ${historicRequirement(h)} PTS` : ''}` : 'HISTORICO';
+    [['ATUAL 2025-26', 0], [hLabel, 1]].forEach(([label, k]) => {
       const on = c.ver === k;
       const y = vy + k * 14;
       if (on) g.fillStyle(c.focus === 'ver' ? 0xffe14d : 0x6fa0ff, 0.2).fillRect(250, y - 3, 216, 12);

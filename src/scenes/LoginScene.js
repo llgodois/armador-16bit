@@ -3,14 +3,30 @@ import { VIEW } from '../config.js';
 import PixelText from '../ui/PixelText.js';
 import { drawPanel } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
-import { login, isOnline, lastName, knownNames } from '../net/backend.js';
+import { login, isOnline, lastName } from '../net/backend.js';
 
 // =====================================================================
 //  LOGIN (ao abrir o site): apelido + PIN de 4 números.
-//  Teclado: digite. Controle: CIMA/BAIXO troca entre apelidos já usados
-//  e muda os números do PIN; ESQ/DIR anda entre os números; A confirma.
-//  "Jogar sem conta" entra como convidado (só as lendas gratuitas fora do Arcade).
+//  Usa CAMPOS DE TEXTO DE VERDADE do navegador (por cima do jogo): digitar
+//  funciona como em qualquer site — o PIN avança sozinho a cada número.
+//  "Jogar sem conta" entra como convidado.
 // =====================================================================
+const CSS = `
+#login-ov{position:fixed;z-index:20;display:flex;flex-direction:column;align-items:center;gap:10px;
+  font-family:'Courier New',monospace;font-weight:bold;color:#d8d0ee;transform-origin:top left}
+#login-ov label{display:flex;align-items:center;gap:12px;font-size:15px;letter-spacing:2px}
+#login-ov label span{width:90px;text-align:right;color:#ffe14d}
+#login-ov input{width:180px;padding:6px 8px;font:inherit;font-size:20px;letter-spacing:4px;text-transform:uppercase;
+  background:#1d1a2b;color:#fff;border:2px solid #3a3352;border-radius:0;outline:none}
+#login-ov input:focus{border-color:#ffe14d;background:#2a2440}
+#login-ov input.pin{width:110px;letter-spacing:12px;text-align:center}
+#login-ov button{width:300px;padding:7px;font:inherit;font-size:15px;letter-spacing:2px;cursor:pointer;
+  background:#1d1a2b;color:#d8d0ee;border:2px solid #3a3352;border-radius:0}
+#login-ov button:hover,#login-ov button:focus{border-color:#ffe14d;color:#ffe14d;outline:none}
+#login-ov button.main{color:#6dff6d;border-color:#2e8b3a}
+#login-ov .msg{min-height:18px;font-size:13px;letter-spacing:1px}
+`;
+
 export default class LoginScene extends Phaser.Scene {
   constructor() {
     super('Login');
@@ -20,181 +36,129 @@ export default class LoginScene extends Phaser.Scene {
     const W = VIEW.W;
     this.cameras.main.setBackgroundColor('#0b0b14');
     sfx.music('menu');
-    this.name = lastName() || '';
-    this.pin = ['0', '0', '0', '0'];
-    this.filled = [false, false, false, false]; // quais números do PIN já foram digitados
-    this.pinTyped = 0;
-    this.pinPos = 0;
-    this.focus = this.name ? 1 : 0; // 0 nome, 1 pin, 2 entrar, 3 sem conta
-    this.msg = isOnline() ? 'ONLINE: RANKING COMPARTILHADO' : 'OFFLINE: CONTA SALVA SO NESTE NAVEGADOR';
-    this.msgColor = isOnline() ? 0x6dff6d : 0xff9a4d;
-    this.busy = false;
-    this.g = this.add.graphics();
-    this.dyn = [];
-    // teclado lido direto do navegador (o repasse do Phaser às vezes duplicava teclas no PIN)
-    const onDown = (ev) => {
-      if (!this.sys.isActive()) return;
-      if (['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', ' '].includes(ev.key)) ev.preventDefault();
-      this.onKey(ev);
+    // o Phaser não pode "engolir" Tab/espaço/setas enquanto digitamos nos campos
+    this.input.keyboard.disableGlobalCapture();
+    this.input.keyboard.enabled = false;
+
+    const g = this.add.graphics();
+    const T = (x, y, s, o = {}) => new PixelText(this, x, y, s, o);
+    T(W / 2 + 2, 14, 'ARMADOR', { scale: 4, origin: [0.5, 0], color: 0xffe14d, shadow: 0xa3231c });
+    T(W / 2, 50, 'QUEM VAI JOGAR?', { origin: [0.5, 0], color: 0x6fa0ff });
+    drawPanel(g, W / 2 - 150, 62, 300, 178, 0xffe14d);
+    T(W / 2, 246, 'APELIDO SO COM LETRAS  -  PIN COM 4 NUMEROS  -  NOME NOVO = CONTA NOVA', { origin: [0.5, 0], color: 0x7a7290 });
+
+    this.buildOverlay();
+    this.events.once('shutdown', () => this.destroyOverlay());
+  }
+
+  buildOverlay() {
+    if (!document.getElementById('login-css')) {
+      const st = document.createElement('style');
+      st.id = 'login-css';
+      st.textContent = CSS;
+      document.head.appendChild(st);
+    }
+    const ov = document.createElement('div');
+    ov.id = 'login-ov';
+    ov.innerHTML = `
+      <label><span>APELIDO</span><input id="lg-name" maxlength="12" autocomplete="username" spellcheck="false"></label>
+      <label><span>PIN</span><input id="lg-pin" class="pin" maxlength="4" inputmode="numeric" type="password" autocomplete="current-password"></label>
+      <button id="lg-go" class="main">ENTRAR / CRIAR CONTA</button>
+      <button id="lg-guest">JOGAR SEM CONTA</button>
+      <div class="msg" id="lg-msg"></div>`;
+    document.body.appendChild(ov);
+    this.ov = ov;
+    const name = ov.querySelector('#lg-name');
+    const pin = ov.querySelector('#lg-pin');
+    const msg = ov.querySelector('#lg-msg');
+    this.setMsg = (t, c) => {
+      msg.textContent = t;
+      msg.style.color = c;
     };
-    window.addEventListener('keydown', onDown);
-    this.events.once('shutdown', () => window.removeEventListener('keydown', onDown));
-    // mouse/toque: clique no apelido, em cada caixa do PIN ou nos botões
-    this.input.on('pointerdown', (ptr) => this.onClick(ptr.x, ptr.y));
-    this.draw();
+    this.setMsg(isOnline() ? 'ONLINE: RANKING COMPARTILHADO' : 'OFFLINE: CONTA SALVA SO NESTE NAVEGADOR', isOnline() ? '#6dff6d' : '#ff9a4d');
+    name.value = lastName() || '';
+    // apelido: só letras; digitou número aqui = começou o PIN
+    name.addEventListener('input', () => {
+      const digits = name.value.replace(/\D/g, '');
+      name.value = name.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 12);
+      if (digits) {
+        pin.focus();
+        pin.value = (pin.value + digits).slice(0, 4);
+      }
+    });
+    pin.addEventListener('input', () => {
+      pin.value = pin.value.replace(/\D/g, '').slice(0, 4);
+      if (pin.value.length === 4) ov.querySelector('#lg-go').focus();
+    });
+    name.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        pin.focus();
+      }
+    });
+    pin.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.submit();
+      }
+    });
+    ov.querySelector('#lg-go').addEventListener('click', () => this.submit());
+    ov.querySelector('#lg-guest').addEventListener('click', () => this.enter(null));
+    this.nameEl = name;
+    this.pinEl = pin;
+    this.place = () => {
+      const r = this.game.canvas.getBoundingClientRect();
+      const s = r.width / VIEW.W;
+      ov.style.left = `${r.left + (VIEW.W / 2 - 150) * s}px`;
+      ov.style.top = `${r.top + 70 * s}px`;
+      ov.style.width = `${300}px`;
+      ov.style.transform = `scale(${(300 * s) / 300 / 1.6})`;
+      ov.style.width = `${300 * 1.6}px`;
+    };
+    this.place();
+    window.addEventListener('resize', this.place);
+    setTimeout(() => (name.value ? pin : name).focus(), 50);
   }
 
-  onKey(ev, again = false) {
-    if (this.busy) return;
-    // o mesmo evento de tecla às vezes chega duas vezes: conta só uma
-    if (!again) {
-      if (ev === this.lastEv || (ev.timeStamp && ev.timeStamp === this.lastTs && ev.key === this.lastKey)) return;
-      this.lastEv = ev;
-      this.lastTs = ev.timeStamp;
-      this.lastKey = ev.key;
-    }
-    const k = ev.key;
-    if (k === 'ArrowDown' && this.focus !== 1) this.focus = (this.focus + 1) % 4;
-    else if (k === 'ArrowUp' && this.focus !== 1 && this.focus !== 0) this.focus = (this.focus + 3) % 4;
-    else if (k === 'Tab') this.focus = (this.focus + 1) % 4;
-    else if (this.focus === 0) {
-      const names = knownNames();
-      // apelido + ENTER já leva para o PIN; números depois de um apelido pronto também
-      if (/^\d$/.test(k)) {
-        // número no apelido = começou o PIN: pula para as caixas do PIN
-        if (this.name.length < 2) {
-          this.msg = 'PRIMEIRO O APELIDO (SO LETRAS)';
-          this.msgColor = 0xff9a4d;
-          return this.draw();
-        }
-        this.focus = 1;
-        return this.onKey(ev, true);
-      }
-      if ((k === 'ArrowUp' || k === 'ArrowDown') && names.length) {
-        const i = names.indexOf(this.name);
-        this.name = names[(i + (k === 'ArrowDown' ? 1 : -1) + names.length) % names.length];
-      } else if (k === 'ArrowUp') this.focus = 3;
-      else if (k === 'Backspace') this.name = this.name.slice(0, -1);
-      else if (/^[a-zA-Z]$/.test(k) && this.name.length < 12) this.name += k.toUpperCase();
-      else if (k === 'Enter') this.focus = 1;
-      else if (k === 'Escape') this.name = '';
-    } else if (this.focus === 1) {
-      if (/^\d$/.test(k)) {
-        this.pin[this.pinPos] = k;
-        this.filled[this.pinPos] = true;
-        this.pinTyped++;
-        // completou os 4: vai para ENTRAR (ENTER confirma)
-        if (this.filled.every(Boolean) && this.pinPos === 3) this.focus = 2;
-        else this.pinPos = Math.min(3, this.pinPos + 1);
-      } else if (k === 'Backspace') {
-        if (!this.filled[this.pinPos] && this.pinPos > 0) this.pinPos--;
-        this.filled[this.pinPos] = false;
-        this.pin[this.pinPos] = '0';
-      }
-      else if (k === 'ArrowLeft') this.pinPos = Math.max(0, this.pinPos - 1);
-      else if (k === 'ArrowRight') this.pinPos = Math.min(3, this.pinPos + 1);
-      else if (k === 'ArrowUp' || k === 'ArrowDown') {
-        if (k === 'ArrowUp' && this.pinPos === 0 && this.pinTyped === 0) this.focus = 0;
-        else {
-          const d = (Number(this.pin[this.pinPos]) + (k === 'ArrowUp' ? 1 : 9)) % 10;
-          this.pin[this.pinPos] = String(d);
-          this.filled[this.pinPos] = true;
-          this.pinTyped++;
-        }
-      } else if (k === 'Enter') return this.submit();
-      else if (k === 'Escape') this.focus = 0;
-    } else if (k === 'Enter') {
-      if (this.focus === 2) return this.submit();
-      return this.enter(null);
-    }
-    sfx.play('select');
-    this.draw();
-  }
-
-  // regiões clicáveis (coordenadas da tela do jogo)
-  onClick(x, y) {
-    if (this.busy) return;
-    const W = VIEW.W;
-    if (x < W / 2 - 130 || x > W / 2 + 130) return;
-    if (y >= 84 && y < 108) this.focus = 0;
-    else if (y >= 112 && y < 136) {
-      this.focus = 1;
-      const i = Math.floor((x - (W / 2 - 42)) / 18);
-      if (i >= 0 && i < 4) this.pinPos = i;
-    } else if (y >= 142 && y < 166) return this.submit();
-    else if (y >= 168 && y < 192) return this.enter(null);
-    else return;
-    sfx.play('select');
-    this.draw();
+  destroyOverlay() {
+    window.removeEventListener('resize', this.place);
+    if (this.ov) this.ov.remove();
+    this.ov = null;
+    this.input.keyboard.enabled = true;
+    this.input.keyboard.enableGlobalCapture();
   }
 
   async submit() {
-    if (!this.filled.every(Boolean)) {
-      this.msg = 'DIGITE OS 4 NUMEROS DO PIN';
-      this.msgColor = 0xff9a4d;
-      this.focus = 1;
-      this.pinPos = this.filled.indexOf(false);
-      return this.draw();
+    if (this.busy) return;
+    const name = this.nameEl.value.trim();
+    const pin = this.pinEl.value;
+    if (name.length < 2) {
+      this.nameEl.focus();
+      return this.setMsg('APELIDO COM 2 LETRAS OU MAIS', '#ff9a4d');
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      this.pinEl.focus();
+      return this.setMsg('DIGITE OS 4 NUMEROS DO PIN', '#ff9a4d');
     }
     sfx.unlock();
     this.busy = true;
-    this.msg = 'ENTRANDO...';
-    this.msgColor = 0xb8b0d0;
-    this.draw();
-    const r = await login(this.name, this.pin.join(''));
+    this.setMsg('ENTRANDO...', '#b8b0d0');
+    const r = await login(name, pin);
     this.busy = false;
     if (!r.ok) {
-      this.msg = r.error;
-      this.msgColor = 0xff7b6b;
       sfx.play('buzzer');
-      return this.draw();
+      this.pinEl.value = '';
+      this.pinEl.focus();
+      return this.setMsg(r.error, '#ff7b6b');
     }
     sfx.play('play');
     this.enter(r.profile, r.created);
   }
 
   enter(profile, created = false) {
+    sfx.unlock();
     this.registry.set('profile', profile);
     this.registry.set('profileNew', created);
     this.scene.start('Title');
-  }
-
-  draw() {
-    this.dyn.forEach((o) => o.destroy());
-    this.dyn = [];
-    const g = this.g;
-    g.clear();
-    const W = VIEW.W;
-    const T = (x, y, s, o = {}) => this.dyn.push(new PixelText(this, x, y, s, o));
-    T(W / 2 + 2, 22, 'ARMADOR', { scale: 4, origin: [0.5, 0], color: 0xffe14d, shadow: 0xa3231c });
-    T(W / 2, 60, 'QUEM VAI JOGAR?', { origin: [0.5, 0], color: 0x6fa0ff });
-    drawPanel(g, W / 2 - 130, 76, 260, 150, 0xffe14d);
-    const row = (i, y) => {
-      if (this.focus === i) g.fillStyle(0xffe14d, 0.18).fillRect(W / 2 - 122, y - 4, 244, 22);
-    };
-    row(0, 88);
-    T(W / 2 - 114, 92, 'APELIDO', { color: this.focus === 0 ? 0xffe14d : 0x7a7290 });
-    const cursor = this.focus === 0 && Math.floor(this.time.now / 400) % 2 === 0 ? '_' : '';
-    T(W / 2 - 40, 90, (this.name || (this.focus === 0 ? '' : '---')) + cursor, { scale: 1, color: 0xffffff });
-    row(1, 116);
-    T(W / 2 - 114, 120, 'PIN', { color: this.focus === 1 ? 0xffe14d : 0x7a7290 });
-    this.pin.forEach((d, i) => {
-      const x = W / 2 - 40 + i * 18;
-      const cur = this.focus === 1 && this.pinPos === i;
-      g.fillStyle(cur ? 0xffe14d : this.filled[i] ? 0x6fa0ff : 0x3a3352, 1).fillRect(x - 2, 116, 13, 14);
-      // digitado = *, vazio = _, na caixa atual mostra o número
-      const ch = cur && this.filled[i] ? d : this.filled[i] ? '*' : '_';
-      T(x + 4, 119, ch, { origin: [0.5, 0], color: cur ? 0x0b0b14 : 0xffffff });
-    });
-    if (this.focus === 0) T(W / 2 + 122, 92, 'ENTER: PIN', { origin: [1, 0], color: 0x7a7290 });
-    if (this.focus === 1) T(W / 2 + 122, 120, `${this.filled.filter(Boolean).length}/4`, { origin: [1, 0], color: 0x7a7290 });
-    row(2, 146);
-    T(W / 2, 150, 'ENTRAR / CRIAR CONTA', { origin: [0.5, 0], color: this.focus === 2 ? 0x6dff6d : 0xd8d0ee });
-    row(3, 172);
-    T(W / 2, 176, 'JOGAR SEM CONTA', { origin: [0.5, 0], color: this.focus === 3 ? 0xffe14d : 0x9a92b0 });
-    T(W / 2, 204, this.msg, { origin: [0.5, 0], color: this.msgColor });
-    T(W / 2, 236, 'DIGITE O APELIDO E O PIN  -  TAB/SETAS MUDAM DE CAMPO  -  ENTER CONFIRMA', { origin: [0.5, 0], color: 0x7a7290 });
-    T(W / 2, 248, 'CONTROLE: CIMA/BAIXO APELIDOS E NUMEROS  -  ESQ/DIR NUMERO  -  A CONFIRMA', { origin: [0.5, 0], color: 0x7a7290 });
-    T(W / 2, 214, 'NOME NOVO = CONTA NOVA COM ESSE PIN', { origin: [0.5, 0], color: 0x5a5270 });
   }
 }
