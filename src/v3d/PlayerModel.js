@@ -38,9 +38,9 @@ export default class PlayerModel {
     this.arms = c.arms; // [{ sh, elbow }]
     this.armLen = STYLE.armLen;
 
-    // Altura exagerada (estilo cartoon/TV): 1,83 m fica bem menor que um pivô de 2,13 m.
+    // Altura perto da real (só um pouco exagerada): 1,88 m x 2,13 m = ~20% de diferença.
     const cm = info.cm || 198;
-    const target = SIZE * Math.max(0.72, Math.min(1.3, 1 + (cm - 198) * 0.013));
+    const target = SIZE * Math.max(0.85, Math.min(1.15, 1 + (cm - 198) * 0.006));
     this.root.scale.setScalar(target / c.totalH);
     this.heightUnits = target;
 

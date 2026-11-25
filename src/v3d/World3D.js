@@ -239,14 +239,21 @@ export default class World3D {
       if (holding) {
         if (b.z >= 18 || p.layupT > 0) hold = true; // passe/reposição ou passadas da bandeja: bola no peito
         else {
-          const dx = b.x - x;
-          const dz = (b.y - y) * Y_SCALE;
+          // O 2D desloca a bola para o lado no eixo da TELA (não do corpo): virado de lado, ela ia
+          // parar atrás dele. Aqui a bola fica ao lado e um pouco à frente do CORPO; o lado vem do
+          // drible do jogo (sideCur: -1..1, muda no crossover).
           const yaw = m.yaw;
-          const lx = dx * Math.cos(yaw) - dz * Math.sin(yaw);
-          dribble = { side: lx >= 0 ? 1 : -1, z: b.z };
-          // altura do quique proporcional ao tamanho do jogador (chão -> cintura)
+          const side = b.sideCur || 1;
           const ps = m.heightUnits / SIZE;
-          ballWorld = new THREE.Vector3(b.x, Math.max(0, b.z - 2) * 1.05 * ps + BALL_R, toZ(b.y));
+          const lx = side * 5.5 * ps; // para o lado (mão do drible)
+          const lz = 3.2 * ps; // um pouco à frente
+          dribble = { side: side >= 0 ? 1 : -1, z: b.z };
+          // altura do quique proporcional ao tamanho do jogador (chão -> cintura)
+          ballWorld = new THREE.Vector3(
+            x + lx * Math.cos(yaw) + lz * Math.sin(yaw),
+            Math.max(0, b.z - 2) * 1.05 * ps + BALL_R,
+            toZ(y) - lx * Math.sin(yaw) + lz * Math.cos(yaw),
+          );
           this.dribbleBall = ballWorld;
         }
       }

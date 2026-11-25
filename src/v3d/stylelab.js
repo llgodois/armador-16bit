@@ -29,7 +29,7 @@ camera.lookAt(0, 22, 0);
 
 const home = { jersey: '#1d5fd1', trim: '#ffc72c', shorts: '#1d5fd1', shoes: '#ffc72c' };
 const away = { jersey: '#6a2fa0', trim: '#fdb927', shorts: '#6a2fa0', shoes: '#fdb927' };
-const heightOf = (cm) => SIZE * Math.max(0.72, Math.min(1.3, 1 + (cm - 198) * 0.013));
+const heightOf = (cm) => SIZE * Math.max(0.85, Math.min(1.15, 1 + (cm - 198) * 0.006));
 
 const models = [];
 const keys = Object.keys(STYLES);
