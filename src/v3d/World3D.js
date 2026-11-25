@@ -24,6 +24,23 @@ function ballTexture() {
   t.magFilter = THREE.NearestFilter;
   return t;
 }
+// Céu/neblina do ginásio e luzes (sol com sombra). Devolve o sol.
+function addLights(s) {
+  s.background = new THREE.Color(0x0b0b14);
+  s.fog = new THREE.Fog(0x0b0b14, 520, 1150);
+  s.add(new THREE.HemisphereLight(0xcfdcff, 0x3a2a22, 1.6));
+  const sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const sc = sun.shadow.camera;
+  sc.left = sc.bottom = -280;
+  sc.right = sc.top = 280;
+  sc.near = 10;
+  sc.far = 900;
+  sun.shadow.bias = -0.0008;
+  s.add(sun, sun.target);
+  return sun;
+}
 const hexCss = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6);
 const tintOf = (img) => (img && img.isTinted ? img.tintTopLeft : 0xffffff);
 
@@ -66,21 +83,7 @@ export default class World3D {
     this.game = game;
     this.ball = game.ball;
     const s = (this.scene = new THREE.Scene());
-    s.background = new THREE.Color(0x0b0b14);
-    s.fog = new THREE.Fog(0x0b0b14, 520, 1150);
-
-    s.add(new THREE.HemisphereLight(0xcfdcff, 0x3a2a22, 1.6));
-    const sun = (this.sun = new THREE.DirectionalLight(0xfff2dd, 2.4));
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    const sc = sun.shadow.camera;
-    sc.left = sc.bottom = -280;
-    sc.right = sc.top = 280;
-    sc.near = 10;
-    sc.far = 900;
-    sun.shadow.bias = -0.0008;
-    s.add(sun, sun.target);
-
+    this.sun = addLights(s);
     this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark });
 
     // bola
@@ -115,6 +118,7 @@ export default class World3D {
     this.prevBallState = null;
     this.smoothT = 0;
     this.canvas.style.display = 'block';
+    this.canvas.style.filter = '';
     this.overlay.style.display = 'block';
   }
 
@@ -131,6 +135,27 @@ export default class World3D {
     this.game = null;
     this.ball = null;
     this.floats = [];
+  }
+
+  // Menus: o ginásio vazio ao fundo, câmera balançando devagar pela lateral.
+  showcase(time) {
+    if (!this.show) {
+      const s = new THREE.Scene();
+      const sun = addLights(s);
+      const court = buildCourt(s, {});
+      sun.position.set(160, 320, toZ(MID_Y) + 120);
+      sun.target.position.set(240, 0, toZ(MID_Y));
+      this.show = { scene: s, court };
+    }
+    this.canvas.style.display = 'block';
+    this.canvas.style.filter = 'brightness(0.45) saturate(0.85)'; // fundo dos menus: escurecido
+    this.overlay.style.display = 'none';
+    const a = Math.sin(time / 9000) * 0.55;
+    const cx = 240;
+    const cz = toZ(MID_Y) - 120;
+    this.camera.position.set(cx + Math.sin(a) * 430, 120 + Math.sin(time / 7000) * 25, cz + Math.cos(a) * 430);
+    this.camera.lookAt(cx, 30, cz);
+    this.renderer.render(this.show.scene, this.camera);
   }
 
   floatText(x, y, str, color = 0xffffff) {
@@ -420,6 +445,7 @@ export default class World3D {
   drawOverlay(g, dt, time) {
     const c = this.ctx;
     c.clearRect(0, 0, this.W, this.H);
+    this.drawRoutes(g, time);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     const live = g.state === 'live';
@@ -454,7 +480,7 @@ export default class World3D {
 
     // ícones de passe (segure J): 1..4
     if (g.icons) {
-      c.font = 'bold 9px monospace';
+      c.font = '800 11px "Barlow Condensed", sans-serif';
       for (const [i, ic] of g.icons.entries()) {
         if (!ic.bg.visible) continue;
         const s = this.project(ic.p.x, ic.p.y, this.headOf(ic.p) + 14);
@@ -488,7 +514,7 @@ export default class World3D {
     }
 
     // textos flutuantes
-    c.font = 'bold 10px monospace';
+    c.font = '800 13px "Barlow Condensed", sans-serif';
     this.floats = this.floats.filter((f) => (f.t += dt) < 0.9);
     for (const f of this.floats) {
       const s = this.project(f.x, f.y, 34 + f.t * 20);
@@ -499,7 +525,113 @@ export default class World3D {
       c.fillText(f.str, s.x, s.y);
       c.globalAlpha = 1;
     }
-    if (!live) return;
+    this.drawReplayInfo(g);
+  }
+
+  // Rotas da jogada chamada, desenhadas NO CHÃO (projetadas em perspectiva).
+  // Mesma lógica do 16-bit (GameScene.drawPlayRoutes).
+  drawRoutes(g, time) {
+    const play = g.play;
+    if (!play || play.done || g.offSide !== 'home' || g.state !== 'live') return;
+    const ph = play.phase;
+    if (!ph) return;
+    const c = this.ctx;
+    const COLORS = { PG: '#3ad6ff', SG: '#6fa0ff', SF: '#6dff6d', PF: '#ff9a4d', C: '#ff6bd5' };
+    const screens = [].concat(ph.screen || []);
+    const pulse = 0.55 + 0.35 * Math.abs(Math.sin(time / 220));
+    const P = (x, y) => this.project(x, y, 0.4);
+    const line = (pts, color, width, alpha) => {
+      c.globalAlpha = alpha;
+      c.strokeStyle = color;
+      c.lineWidth = width;
+      c.beginPath();
+      pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+      c.stroke();
+    };
+    const arrow = (from, to, color, alpha, width) => {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 10) return;
+      const ux = dx / len;
+      const uy = dy / len;
+      // tracejado que "anda" na direção da rota, com contorno escuro
+      const off = (time / 40) % 9;
+      for (const [w, col, al] of [[width + 2, '#000000', 0.45], [width, color, alpha]]) {
+        for (let t = off; t < len - 6; t += 9) {
+          const e = Math.min(t + 5, len - 6);
+          line([P(from.x + ux * t, from.y + uy * t), P(from.x + ux * e, from.y + uy * e)], col, w, al);
+        }
+      }
+      // ponta da seta (no chão)
+      const a = 0.5;
+      const hx = to.x - ux * 2;
+      const hy = to.y - uy * 2;
+      const cs = Math.cos(a);
+      const sn = Math.sin(a);
+      const pts = [P(hx, hy), P(hx - 8 * (ux * cs - uy * sn), hy - 8 * (uy * cs + ux * sn)), P(hx - 8 * (ux * cs + uy * sn), hy - 8 * (uy * cs - ux * sn))];
+      c.globalAlpha = alpha;
+      c.fillStyle = color;
+      c.beginPath();
+      pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+      c.closePath();
+      c.fill();
+    };
+    const u = g.user;
+    for (const role of Object.keys(ph.spots)) {
+      const p = play.byRole(role);
+      const to = play.target(role);
+      if (!p || !to) continue;
+      const mine = p === u;
+      if (screens.includes(role)) {
+        const s = 6;
+        line([P(to.x - s, to.y - s), P(to.x + s, to.y - s), P(to.x + s, to.y + s), P(to.x - s, to.y + s), P(to.x - s, to.y - s)], '#ffe14d', 2, pulse);
+      }
+      if (play.holds(role)) continue;
+      arrow({ x: p.x, y: p.y }, to, mine ? COLORS.PG : COLORS[role] || '#ffffff', mine ? 1 : 0.85, mine ? 3 : 2);
+    }
+    if (g.ball.holder === u && screens.length && !ph.spots.PG) {
+      const s = play.target(screens[0]);
+      if (s) arrow({ x: u.x, y: u.y }, { x: s.x + play.mid * 16, y: s.y + 8 * g.dir }, COLORS.PG, 1, 3);
+    }
+    // quem é a leitura (opção): anel pulsando no chão
+    for (const t of play.options()) {
+      if (t === u) continue;
+      const pts = [];
+      for (let k = 0; k <= 20; k++) {
+        const a = (k / 20) * Math.PI * 2;
+        pts.push(P(t.x + Math.cos(a) * 11, t.y + Math.sin(a) * 8));
+      }
+      line(pts, '#6dff6d', 1.5, pulse);
+    }
+    c.globalAlpha = 1;
+  }
+
+  // Replay: título e análise da decisão (no 16-bit ficam na tela 2D, escondida aqui).
+  drawReplayInfo(g) {
+    if (g.state !== 'replay' || !g.replayTitle) return;
+    const c = this.ctx;
+    const rows = [g.replayTitle, ...(g.replayInfo || [])].filter((t) => t && t.main && t.main.visible && t.main.text);
+    if (!rows.length) return;
+    const fs = Math.round(this.H / 26);
+    c.font = `600 ${fs}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    // logo abaixo do placar do HUD e dos avisos (que ficam no canvas do Phaser, com tarjas pretas se a janela não for 16:9)
+    const cv = document.querySelector('#game canvas');
+    const r = cv ? cv.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+    const y0 = Math.round(((r.top + r.height * 0.25) / window.innerHeight) * this.H);
+    rows.forEach((t, i) => {
+      const str = t.main.text;
+      const w = c.measureText(str).width + fs * 1.4;
+      const y = y0 + i * fs * 1.6;
+      c.globalAlpha = 0.85;
+      c.fillStyle = '#0c1322';
+      c.fillRect(this.W / 2 - w / 2, y - fs * 0.7, w, fs * 1.4);
+      c.globalAlpha = 1;
+      c.fillStyle = hexCss(t.main.tintTopLeft ?? 0xffffff);
+      c.fillText(str, this.W / 2, y + 1);
+    });
   }
 
   tri(x, y, r) {

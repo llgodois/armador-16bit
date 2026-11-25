@@ -5,6 +5,7 @@ import PixelText from '../ui/PixelText.js';
 import { drawPanel, makeMenu, drawControls } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
 import { load as loadChamp } from '../data/championship.js';
+import { THEME } from '../ui/theme.js';
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
@@ -49,7 +50,7 @@ export default class TitleScene extends Phaser.Scene {
       const g2 = this.add.graphics().setScrollFactor(0).setDepth(5002);
       drawControls(this, g2, 24, 40, W - 44, 5003, this.padPage);
       // os textos do drawControls nascem presos ao mundo: fixa na tela
-      this.children.list.forEach((o) => o.type === 'BitmapText' && o.setScrollFactor(0));
+      this.children.list.forEach((o) => (o.type === 'BitmapText' || o.type === 'Text') && o.setScrollFactor(0));
       T(W / 2, VIEW.H - 22, 'ESQ/DIR (LB/RB) TECLADO-JOYSTICK   ENTER PERSONALIZAR   ESC VOLTAR', { color: 0xb8b0d0 });
       const flip = () => this.scene.restart({ mode: 'controls', pad: !this.padPage });
       this.input.keyboard.on('keydown-LEFT', flip);
@@ -60,9 +61,16 @@ export default class TitleScene extends Phaser.Scene {
     }
 
     // Logo
-    T(W / 2 + 2, 30, 'ARMADOR', { scale: 5, color: 0xffe14d, shadow: 0xa3231c });
-    T(W / 2, 72, 'BASQUETE 16-BIT  -  QUADRA INTEIRA  -  PRIMEIRO A 21', { color: 0x6fa0ff });
-    g.fillStyle(0xffe14d, 1).fillRect(W / 2 - 120, 86, 240, 1);
+    if (THEME.modern) {
+      // versão 3D: logo "ARMADOR 64" com cara de transmissão
+      T(W / 2 - 14, 18, 'ARMADOR', { scale: 5, color: 0xffffff });
+      T(W / 2 + 92, 22, '64', { scale: 3.4, color: 0xff7a2e });
+      T(W / 2, 72, 'BASQUETE 3D  -  QUADRA INTEIRA  -  PRIMEIRO A 21', { color: 0xa9b8cc });
+    } else {
+      T(W / 2 + 2, 30, 'ARMADOR', { scale: 5, color: 0xffe14d, shadow: 0xa3231c });
+      T(W / 2, 72, 'BASQUETE 16-BIT  -  QUADRA INTEIRA  -  PRIMEIRO A 21', { color: 0x6fa0ff });
+    }
+    if (!THEME.modern) g.fillStyle(0xffe14d, 1).fillRect(W / 2 - 120, 86, 240, 1);
 
     const saved = loadChamp();
     let acts;
@@ -70,7 +78,7 @@ export default class TitleScene extends Phaser.Scene {
     else {
       acts = ['arcade', 'competitive', 'career', 'franchise', 'champ'];
       if (saved && !saved.champion) acts.push('continue');
-      acts.push('more', 'controls', 'sound', 'music');
+      acts.push('more', 'version', 'controls', 'sound', 'music');
     }
     const LABEL = {
       arcade: 'ARCADE',
@@ -82,6 +90,7 @@ export default class TitleScene extends Phaser.Scene {
       training: 'TREINO E DESAFIOS',
       franchise: 'FRANQUIA',
       more: 'MAIS MODOS',
+      version: THEME.modern ? 'VERSAO CLASSICA 16-BIT' : 'NOVO: VERSAO 3D (ARMADOR 64)',
       street: 'RUA 3X3',
       allstar: 'FIM DE SEMANA DAS ESTRELAS',
       back: 'VOLTAR',
@@ -90,13 +99,15 @@ export default class TitleScene extends Phaser.Scene {
       sound: sfx.muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO',
       music: sfx.musicMuted ? 'MUSICA: DESLIGADA' : 'MUSICA: LIGADA',
     };
-    drawPanel(g, W / 2 - 100, 92, 200, 20 + acts.length * 17, 0xffe14d);
+    // com muitos itens o espaçamento aperta para caber na tela
+    const gap = Math.min(17, Math.floor(135 / acts.length));
+    drawPanel(g, W / 2 - 100, 92, 200, 20 + acts.length * gap, THEME.modern ? 0xff7a2e : 0xffe14d);
     // quem está jogando
     const prof = this.registry.get('profile');
     T(W - 8, 4, prof ? `${prof.name}  -  ${prof.coins} MOEDAS` : 'CONVIDADO', { origin: [1, 0], color: prof ? 0x6dff6d : 0x7a7290 });
-    const items = acts.map((a) => ({ label: LABEL[a], color: a === 'continue' ? 0x6dff6d : undefined }));
-    const m = makeMenu(this, items, W / 2, 102, { gap: 17, depth: 5002 });
-    this.children.list.forEach((o) => o.type === 'BitmapText' && o.setScrollFactor(0));
+    const items = acts.map((a) => ({ label: LABEL[a], color: a === 'continue' ? 0x6dff6d : a === 'version' ? 0xff9a4d : undefined }));
+    const m = makeMenu(this, items, W / 2, 102, { gap, depth: 5002 });
+    this.children.list.forEach((o) => (o.type === 'BitmapText' || o.type === 'Text') && o.setScrollFactor(0));
     T(W / 2, 250, 'SETAS / WASD ESCOLHE    ENTER CONFIRMA', { color: 0x7a7290 });
 
     const kb = this.input.keyboard;
@@ -123,6 +134,8 @@ export default class TitleScene extends Phaser.Scene {
       else if (a === 'training') this.scene.start('Training');
       else if (a === 'franchise') this.scene.start('Franchise');
       else if (a === 'more') this.scene.restart({ mode: 'more' });
+      // as duas versões ficam no mesmo site: 16-bit (index.html) e 3D (3d.html)
+      else if (a === 'version') window.location.href = THEME.modern ? './index.html' : './3d.html';
       else if (a === 'back') this.scene.restart({ mode: 'menu' });
       else if (a === 'street') this.scene.start('Select', { champ: false, street: true });
       else if (a === 'allstar') this.scene.start('AllStar');

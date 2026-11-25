@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Armador 64</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&display=swap" rel="stylesheet" />
+    <style>
+      /* força o navegador a baixar a fonte antes do Phaser desenhar */
+      .preload-font { font-family: 'Barlow Condensed'; position: absolute; opacity: 0; pointer-events: none; }
+      /* login (campos HTML do 16-bit) no visual moderno */
+      #login-ov, #login-ov * { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif !important; letter-spacing: 0.04em; }
+      #login-ov span { font-weight: 600 !important; color: #ff9a4d !important; }
+      #login-ov input {
+        background: #0e1628 !important; border: 1px solid #2a3a58 !important; border-radius: 6px !important;
+        color: #e8eef7 !important; font-weight: 600 !important;
+      }
+      #login-ov input:focus { border-color: #ff7a2e !important; outline: none !important; }
+      #login-ov button {
+        background: #111b30 !important; border: 1px solid #2a3a58 !important; border-radius: 6px !important;
+        color: #e8eef7 !important; font-weight: 800 !important;
+      }
+      #login-ov button.main { background: #ff7a2e !important; border-color: #ff7a2e !important; color: #10131c !important; }
+      #login-ov button:focus, #login-ov button:hover { border-color: #ff9a4d !important; outline: none !important; }
+    </style>
     <style>
       html, body {
         margin: 0;

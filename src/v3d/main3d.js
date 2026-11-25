@@ -27,22 +27,24 @@ import LoginScene from '../scenes/LoginScene.js';
 import CompetitiveScene from '../scenes/CompetitiveScene.js';
 import { installPadBridge } from '../ui/padBridge.js';
 import World3D from './World3D.js';
+import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 
-function integerZoom() {
-  return Math.max(1, Math.floor(Math.min(window.innerWidth / VIEW.W, window.innerHeight / VIEW.H)));
-}
+// menus e placar com visual moderno (só nesta versão)
+enableModernTheme();
+fontsReady().then(start);
 
+function start() {
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game',
   transparent: true,
   pixelArt: true,
   roundPixels: true,
+  // 4x a resolução do 16-bit: as câmeras usam zoom 4, o layout continua em 480x270
   scale: {
-    mode: Phaser.Scale.NONE,
-    width: VIEW.W,
-    height: VIEW.H,
-    zoom: integerZoom(),
+    mode: Phaser.Scale.FIT,
+    width: VIEW.W * UI_ZOOM,
+    height: VIEW.H * UI_ZOOM,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   input: { gamepad: true },
@@ -53,8 +55,14 @@ const game = new Phaser.Game({
   scene: [BootScene, TitleScene, SelectScene, GameScene, HUDScene, MenuScene, ChampionshipScene, TrainingScene, CareerScene, AllStarScene, FranchiseScene, RemapScene, GameOverScene, LoginScene, CompetitiveScene],
 });
 
-window.addEventListener('resize', () => game.scale.setZoom(integerZoom()));
 installPadBridge(game);
+// cada tela, ao ser criada, ganha o zoom e o fundo translúcido (a partida 2D fica escondida)
+game.events.once('ready', () => {
+  for (const sc of game.scene.scenes) {
+    if (sc.sys.settings.key === 'Game') continue;
+    sc.events.on('create', () => styleScene(sc));
+  }
+});
 game.events.on('step', () => {
   const ov = document.getElementById('login-ov');
   if (ov && !game.scene.isActive('Login')) ov.remove();
@@ -86,6 +94,7 @@ game.events.on('postrender', (_r, time) => {
       bound = null;
       world.detach();
     }
+    world.showcase(time); // menus: o ginásio 3D vazio, câmera passeando
     return;
   }
   if (bound !== scene || world.ball !== scene.ball) bind(scene);
@@ -95,4 +104,5 @@ game.events.on('postrender', (_r, time) => {
 if (import.meta.env.DEV) {
   window.__game = game;
   window.__world = world;
+}
 }

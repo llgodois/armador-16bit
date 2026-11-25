@@ -3,6 +3,7 @@ import { GAME, STAMINA, VIEW } from '../config.js';
 import { teamHudColor } from '../data/teams.js';
 import { letterGrade } from '../data/reads.js';
 import PixelText from '../ui/PixelText.js';
+import { THEME } from '../ui/theme.js';
 import { sfx } from '../audio/sfx.js';
 
 // HUD em cena paralela. Lê o estado da GameScene; só mostra o essencial
@@ -34,6 +35,11 @@ export default class HUDScene extends Phaser.Scene {
     new PixelText(this, 15, 17, gs.awayTeam.name, { color: teamHudColor(gs.awayTeam) });
     this.homeScore = new PixelText(this, 103, 8, '0', { origin: [1, 0] });
     this.awayScore = new PixelText(this, 103, 17, '0', { origin: [1, 0] });
+    // tema moderno (versão 3D): faixa com a cor de cada time, estilo placar de TV
+    if (THEME.modern) {
+      panel.fillStyle(Phaser.Display.Color.HexStringToColor(gs.homeTeam.colors.jersey).color, 1).fillRect(4, 6, 2, 9);
+      panel.fillStyle(Phaser.Display.Color.HexStringToColor(gs.awayTeam.colors.jersey).color, 1).fillRect(4, 16, 2, 9);
+    }
 
     box(112, 4, 36, 24);
     this.clock = new PixelText(this, 130, 9, '24', { scale: 2, origin: [0.5, 0], color: 0xffe14d });

@@ -1,7 +1,16 @@
 import PixelText from './PixelText.js';
+import { THEME } from './theme.js';
 
 // Painel pixel-art: fundo escuro, borda dupla e uma faixa de destaque no topo.
+// (tema moderno da versão 3D: vidro escuro arredondado com filete colorido)
 export function drawPanel(g, x, y, w, h, accent = 0x6fa0ff, alpha = 0.92) {
+  if (THEME.modern) {
+    const r = Math.min(6, h / 4);
+    g.fillStyle(0x0a1120, alpha * 0.9).fillRoundedRect(x, y, w, h, r);
+    g.lineStyle(1, 0x2a3a58, 0.9).strokeRoundedRect(x + 0.5, y + 0.5, w - 1, h - 1, r);
+    g.fillStyle(accent, 1).fillRect(x + r + 2, y, w - 2 * r - 4, 1.5);
+    return;
+  }
   g.fillStyle(0x0b0b14, alpha).fillRect(x, y, w, h);
   g.lineStyle(1, 0x3a3352, 1).strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
   g.lineStyle(1, 0x1a1626, 1).strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
