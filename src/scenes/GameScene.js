@@ -89,6 +89,9 @@ export default class GameScene extends Phaser.Scene {
       combo: 0, lastCross: 0, lastUserPlay: null, stepBack: 0, play: null, inbound: null, pendingShot: null, recTick: 0,
     });
     this.street = !!setup.street;
+    // TREINO LIVRE: { mode: 'shots'|'1x1'|'2x2'|'3x3'|'5x5', play: índice da jogada ou null }
+    this.practice = setup.practice || null;
+    this.prac = { poss: 0, scored: 0, pts: 0, playTry: 0, playMade: 0, possPts: 0, playThis: false };
     // COMPETITIVO (Sobrevivência): só posses de ataque, 3 vidas
     this.survival = !!setup.survival;
     this.lives = 3;
@@ -145,16 +148,15 @@ export default class GameScene extends Phaser.Scene {
     this.home = POS.map((_, i) => mk('home', this.homeTeam, i, i === 0 ? this.build : null));
     this.away = POS.map((_, i) => mk('away', this.awayTeam, i, null));
     // Rua 3x3: só armador, ala e pivô em quadra
-    if (this.street) {
-      const keep = [0, 2, 4];
-      for (const p of [...this.home, ...this.away]) {
-        if (keep.includes(p.index)) continue;
-        p.sprite.destroy();
-        p.shadow.destroy();
-        p.zone.destroy();
-      }
-      this.home = this.home.filter((p) => keep.includes(p.index));
-      this.away = this.away.filter((p) => keep.includes(p.index));
+    // (treino livre: só arremessos = você sozinho; 1x1, 2x2, 3x3 ou 5x5)
+    const KEEP = { shots: [[0], []], '1x1': [[0], [0]], '2x2': [[0, 4], [0, 4]], '3x3': [[0, 2, 4], [0, 2, 4]] };
+    const keepSets = this.street ? [[0, 2, 4], [0, 2, 4]] : this.practice ? KEEP[this.practice.mode] : null;
+    if (keepSets) {
+      const [kh, ka] = keepSets;
+      for (const p of this.home) if (!kh.includes(p.index)) [p.sprite, p.shadow, p.zone].forEach((o) => o.destroy());
+      for (const p of this.away) if (!ka.includes(p.index)) [p.sprite, p.shadow, p.zone].forEach((o) => o.destroy());
+      this.home = this.home.filter((p) => kh.includes(p.index));
+      this.away = this.away.filter((p) => ka.includes(p.index));
     }
     // Banco de reservas (um por posição) com energia própria
     this.bench = {
@@ -264,6 +266,11 @@ export default class GameScene extends Phaser.Scene {
     sfx.play('whistle');
     // lição de mecânica na DEFESA: começa com a bola do adversário
     this.lessonTries = 1;
+    if (this.practice) {
+      this.queuePracticePlay(GAME.introTime * 1000 + 300);
+      const names = { shots: 'Treino de arremessos', '1x1': 'Treino 1 contra 1', '2x2': 'Treino 2 contra 2', '3x3': 'Treino 3 contra 3', '5x5': 'Treino 5 contra 5' };
+      this.time.delayedCall(200, () => this.events.emit('banner', names[this.practice.mode], 'Sem placar e sem fim - ESC para sair', 0x6dff6d, 1.4));
+    }
     if (this.training && this.training.def) this.resetDefLesson();
     if (this.training) this.time.delayedCall(300, () => this.events.emit('toast', this.training.tip, 0x6fa0ff));
     if (this.contest) {
@@ -444,6 +451,88 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(1500, () => {
       this.scene.stop('HUD');
       this.scene.start('Training', { tab: 'lessons', result: { ok: stars > 0, title: `${stars} ESTRELA${stars === 1 ? '' : 'S'}`, lines } });
+    });
+  }
+
+  // ------------------------------------------------------------------ TREINO LIVRE
+  // Posses sem fim: errou, perdeu a bola ou fez a cesta -> nova posse com você no topo.
+  // Só arremessos: a bola volta para você onde você estiver.
+  updatePractice() {
+    const pr = this.prac;
+    const st = this.stats;
+    const pct = st.fga ? Math.round((st.fgm / st.fga) * 100) : 0;
+    const hasPlay = this.practice.play !== null && this.practice.play !== undefined;
+    const playTxt = hasPlay ? `   JOGADA ${pr.playMade}/${pr.playTry}` : '';
+    this.events.emit('contestHud', this.practice.mode === 'shots'
+      ? `ACERTOS ${st.fgm}/${st.fga} (${pct}%)   DE 3: ${st.tpm}/${st.tpa}`
+      : `POSSES ${pr.poss}   PONTOS ${pr.pts}   SEUS ARREMESSOS ${st.fgm}/${st.fga}${playTxt}`);
+    if (this.practice.mode === 'shots') {
+      const b = this.ball;
+      if ((b.state === 'loose' || b.state === 'dead') && !this.pendingShot && !this.pracReturn) {
+        this.pracReturn = true;
+        this.time.delayedCall(500, () => {
+          this.pracReturn = false;
+          if (this.state === 'live' && (this.ball.state === 'loose' || this.ball.state === 'dead')) {
+            this.ball.give(this.pg);
+            this.prac.poss++;
+          }
+        });
+      }
+      return;
+    }
+    // a defesa pegou a bola: a posse acabou sem ponto
+    if (this.offSide === 'away') this.endPracticePossession('Defesa pegou a bola');
+  }
+
+  endPracticePossession(why = null) {
+    const pr = this.prac;
+    if (this.practice.mode === 'shots') {
+      this.setOffense('home');
+      this.ball.give(this.pg);
+      return;
+    }
+    pr.poss++;
+    pr.pts += pr.possPts;
+    if (pr.possPts > 0) pr.scored++;
+    if (pr.playThis) {
+      pr.playTry++;
+      if (pr.possPts > 0) pr.playMade++;
+    }
+    if (why && pr.possPts === 0) this.events.emit('toast', why, 0xb8b0d0);
+    pr.possPts = 0;
+    pr.playThis = false;
+    this.pendingShot = null;
+    this.ft = null;
+    this.inbound = null;
+    this.setOffense('home');
+    // todos voltam às posições: você no topo com a bola, cada defensor no seu homem
+    this.pg.setPosition(BASKET.x, BASKET.y + THREE.ry + 50);
+    for (const p of this.home) {
+      p.stop();
+      if (p === this.pg) continue;
+      const sp = SLOTS[BASE_SLOTS[p.role]];
+      p.setPosition(sp.x, sp.y);
+    }
+    this.defenseAI.reset(false);
+    for (const d of this.away) {
+      d.stop();
+      const m = this.defenseAI.manOf(d);
+      if (m) d.setPosition(m.x + (BASKET.x - m.x) * 0.15, m.y + (BASKET.y - m.y) * 0.15);
+    }
+    this.ball.give(this.pg);
+    this.state = 'intro';
+    this.stateT = 0.6;
+    this.queuePracticePlay(700);
+  }
+
+  // jogada para aprimorar: chamada sozinha no começo de cada posse
+  queuePracticePlay(ms) {
+    if (this.practice.play === null || this.practice.play === undefined) return;
+    this.time.delayedCall(ms, () => {
+      if (this.state === 'live' && this.offSide === 'home') {
+        this.callPlay(this.practice.play);
+        this.prac.playThis = true;
+      }
     });
   }
 
@@ -956,6 +1045,7 @@ export default class GameScene extends Phaser.Scene {
 
   // Reposição: depois de cesta (linha de fundo) ou bola fora/estouro.
   startInbound(side, spot, time, title, color) {
+    if (this.practice) return this.endPracticePossession(title);
     this.setOffense(side);
     // Rua 3x3: toda reposição é a "bola checada" no topo, fora do arco
     if (this.street) spot = { x: BASKET.x + rand(-20, 20), y: BASKET.y + THREE.ry + 50 };
@@ -1058,6 +1148,7 @@ export default class GameScene extends Phaser.Scene {
       this.checkStepOut();
       if (this.survival) this.updateSurvival();
       if (this.training && this.training.def) this.updateDefLesson(dt);
+      if (this.practice) this.updatePractice(dt);
       this.updateLayups(dt);
       if (this.userOnDefense) this.updateUserDefense(dt);
       else this.updateUserOffense(dt);
@@ -2078,7 +2169,9 @@ export default class GameScene extends Phaser.Scene {
     shooter.setPosition(...Object.values(this.toWorld({ x: BASKET.x, y: 140 })));
     const defs = [...this.defTeam].sort((a, b) => b.cm - a.cm);
     const offs = this.offTeam.filter((p) => p !== shooter).sort((a, b) => b.cm - a.cm);
+    // (com menos jogadores em quadra — 2x2, 3x3, treino — alguém pode não existir)
     const place = (p, s) => {
+      if (!p) return;
       const w = this.toWorld(s);
       p.setPosition(w.x, w.y);
       p.stop();
@@ -2617,6 +2710,15 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (team === 'home') this.possPts += pts;
+    if (this.practice) {
+      // treino livre: soma a posse e começa outra
+      this.prac.possPts += pts;
+      if (s.foul && !isFT) return this.startFreeThrows(s.shooter, 1, 'Cesta e falta! +1 lance livre');
+      if (isFT && this.ft && this.ft.left > 0) return this.afterFT(true);
+      this.ft = null;
+      this.state = 'live';
+      return this.endPracticePossession();
+    }
     const reached = !this.survival && this.mode === 'pontos' && (this.score.home >= GAME.targetScore || this.score.away >= GAME.targetScore);
     if (reached || (this.suddenDeath && this.score.home !== this.score.away)) {
       this.ft = null;
@@ -2715,6 +2817,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateShotClock(dt) {
+    if (this.practice && this.practice.mode === 'shots') {
+      this.shotClock = 24;
+      return;
+    }
     const s = this.ball.state;
     if ((s !== 'held' && s !== 'pass') || this.inbound) return;
     this.shotClock = Math.max(0, this.shotClock - dt);

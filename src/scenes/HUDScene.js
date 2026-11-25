@@ -187,6 +187,12 @@ export default class HUDScene extends Phaser.Scene {
     } else this.gameClock.setText(`A ${GAME.targetScore}`);
     this.foulText.setText(`FALTAS ${g.teamFouls.home}-${g.teamFouls.away}`);
     // competitivo: vidas e pontos de ranking no lugar do relógio/faltas
+    if (g.practice) {
+      this.gameClock.setText('TREINO');
+      this.gameClock.setColor(0x6dff6d);
+      this.foulText.setText('LIVRE');
+      this.playText.setText(this.contestText || '').setColor(0x6dff6d);
+    }
     if (g.survival) {
       this.gameClock.setText(`VIDAS ${g.lives}`);
       this.gameClock.setColor(g.lives > 1 ? 0xffe14d : 0xff7b6b);

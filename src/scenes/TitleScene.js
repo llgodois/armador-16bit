@@ -66,7 +66,7 @@ export default class TitleScene extends Phaser.Scene {
 
     const saved = loadChamp();
     let acts;
-    if (this.mode === 'more') acts = ['street', 'allstar', 'training', 'account', 'back'];
+    if (this.mode === 'more') acts = ['street', 'allstar', 'training', 'practice', 'account', 'back'];
     else {
       acts = ['arcade', 'competitive', 'career', 'franchise', 'champ'];
       if (saved && !saved.champion) acts.push('continue');
@@ -76,6 +76,7 @@ export default class TitleScene extends Phaser.Scene {
       arcade: 'ARCADE',
       competitive: 'COMPETITIVO (SOBREVIVENCIA)',
       account: 'TROCAR DE CONTA',
+      practice: 'TREINO LIVRE',
       champ: 'CAMPEONATO',
       career: 'CARREIRA',
       training: 'TREINO E DESAFIOS',
@@ -116,6 +117,7 @@ export default class TitleScene extends Phaser.Scene {
       else if (a === 'champ') this.scene.start('Select', { champ: true });
       else if (a === 'competitive') this.scene.start('Competitive');
       else if (a === 'account') this.scene.start('Login');
+      else if (a === 'practice') this.scene.start('Training', { tab: 'free' });
       else if (a === 'continue') this.scene.start('Championship');
       else if (a === 'career') this.scene.start('Career');
       else if (a === 'training') this.scene.start('Training');
