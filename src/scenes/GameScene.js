@@ -209,6 +209,9 @@ export default class GameScene extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,P,ESC,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE');
     for (const [a, keyName] of Object.entries(this.ctl.keys)) this.keys[a] = this.input.keyboard.addKey(keyName);
     this.input.keyboard.addCapture('UP,DOWN,LEFT,RIGHT,SPACE,SHIFT,TAB');
+    // ícones mostram números (teclado) ou A/B/X/Y (controle), conforme o que você usou por último
+    this.lastInputPad = false;
+    this.input.keyboard.on('keydown', () => (this.lastInputPad = false));
     this.events.on('resume', () => {
       this.input.keyboard.resetKeys();
       // botões do controle que fecharam o menu não viram ação no jogo
@@ -765,6 +768,7 @@ export default class GameScene extends Phaser.Scene {
     const now = {};
     for (let i = 0; i < 16; i++) now[i] = raw(i);
     const hit = (i) => now[i] && !prevRaw[i];
+    if (pad && (Object.values(now).some(Boolean) || Math.hypot(pad.axes[0] || 0, pad.axes[1] || 0) > 0.4)) this.lastInputPad = true;
     this.prevRaw = now;
     const modIcon = now[P.ICON];
     const modCmd = now[P.E];
@@ -2748,18 +2752,24 @@ export default class GameScene extends Phaser.Scene {
       this.targetMarker.setTint(risky ? 0xff5a4d : open ? 0x6dff6d : 0xffe14d);
     }
 
-    // Ícones de passe (segure J): número de cada companheiro
-    const showIcons = live && !this.userOnDefense && ball.holder === u && this.btn.J.isDown;
-    for (const ic of this.icons) {
+    // Ícones de passe: segure J (teclado: números 1-4) ou RB (controle: botões A/B/X/Y com as cores do Xbox).
+    // Segurando LB (comando), os mesmos ícones mostram em quem o comando vai.
+    const iconMode = (ball.holder === u && (this.btn.J.isDown || this.padMod === 'icon')) || this.padMod === 'cmd';
+    const showIcons = live && !this.userOnDefense && iconMode;
+    const usePad = this.lastInputPad || !!this.padMod;
+    const PAD_BTN = [['A', 0x6dff6d], ['B', 0xff5a4d], ['X', 0x4d8dff], ['Y', 0xffe14d]];
+    this.icons.forEach((ic, i) => {
       ic.bg.setVisible(showIcons);
       ic.num.setVisible(showIcons);
-      if (showIcons) {
-        const x = Math.round(ic.p.x);
-        const y = Math.round(ic.p.y - ic.p.headY - 16);
-        ic.bg.setPosition(x, y);
-        ic.num.setPosition(x + 1, y + 1);
-      }
-    }
+      if (!showIcons) return;
+      const [label, color] = usePad ? PAD_BTN[i] || ['?', 0xffffff] : [String(i + 1), 0xffffff];
+      if (ic.num.text !== label) ic.num.setText(label);
+      ic.bg.setTint(color);
+      const x = Math.round(ic.p.x);
+      const y = Math.round(ic.p.y - ic.p.headY - 16);
+      ic.bg.setPosition(x, y);
+      ic.num.setPosition(x + 1, y + 1);
+    });
 
     const options = this.play && !this.userOnDefense ? this.play.options() : [];
     const myMan = this.userOnDefense ? this.defenseAI.manOf(u) : null;
