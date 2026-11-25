@@ -25,6 +25,8 @@ export default class CompetitiveScene extends Phaser.Scene {
   }
 
   create() {
+    // cada abertura da tela tem um número: textos de uma tela antiga (que ainda carregava) não aparecem na nova
+    this.gen = (this.gen || 0) + 1;
     this.cameras.main.setBackgroundColor('#0b0b14');
     this.g = this.add.graphics();
     this.profile = this.registry.get('profile');
@@ -82,19 +84,22 @@ export default class CompetitiveScene extends Phaser.Scene {
   async pageRanking(highlight = null) {
     const W = VIEW.W;
     this.header('RANKING', 0x6fa0ff);
+    const gen = this.gen;
     const loading = this.T(W / 2, 100, 'CARREGANDO...', { origin: [0.5, 0], color: 0xb8b0d0 });
     this.onEnter = () => this.scene.restart({ page: 'menu' });
     const rows = await topScores(15);
-    if (!this.sys.isActive()) return;
+    if (!this.sys.isActive() || gen !== this.gen) return;
     loading.destroy();
     if (!rows) return this.T(W / 2, 100, 'SEM CONEXAO COM O SERVIDOR', { origin: [0.5, 0], color: 0xff7b6b });
     if (!rows.length) return this.T(W / 2, 100, 'NINGUEM JOGOU AINDA', { origin: [0.5, 0], color: 0xb8b0d0 });
-    this.T(24, 44, '#   JOGADOR       PONTOS  CESTAS  ASSIST.  ARMADOR', { color: 0x7a7290 });
+    this.T(16, 44, '#  JOGADOR      PTS CESTAS ASSIST  ARMADOR          TIME', { color: 0x7a7290 });
     rows.forEach((r, i) => {
       const me = this.profile && r.name === this.profile.name;
       const hl = highlight && r.name === highlight.name && r.score === highlight.score;
-      const line = `${String(i + 1).padStart(2)}  ${r.name.padEnd(12).slice(0, 12)}  ${String(r.score).padStart(6)}  ${String(r.baskets).padStart(6)}  ${String(r.assists).padStart(7)}   ${(r.pg || '').slice(0, 16)}`;
-      this.T(24, 56 + i * 11, line, { color: hl ? 0x6dff6d : me ? 0xffe14d : 0xd8d0ee });
+      // o campo "pg" guarda "Armador | Time"
+      const [pg, team] = String(r.pg || '').split(' | ');
+      const line = `${String(i + 1).padStart(2)} ${r.name.padEnd(12).slice(0, 12)} ${String(r.score).padStart(3)} ${String(r.baskets).padStart(6)} ${String(r.assists).padStart(6)}  ${(pg || '').padEnd(16).slice(0, 16)} ${(team || '-').slice(0, 13)}`;
+      this.T(16, 56 + i * 11, line, { color: hl ? 0x6dff6d : me ? 0xffe14d : 0xd8d0ee });
     });
     this.T(W / 2, VIEW.H - 30, 'ENTER / ESC VOLTAR', { origin: [0.5, 0], color: 0xb8b0d0 });
   }
@@ -159,6 +164,7 @@ export default class CompetitiveScene extends Phaser.Scene {
     const W = VIEW.W;
     const r = this.result;
     const p = this.profile;
+    const gen = this.gen;
     // atualiza o perfil antes de desenhar (moedas, recorde, desafios)
     const coins = r.score * COIN_PER_POINT;
     let record = false;
@@ -176,7 +182,7 @@ export default class CompetitiveScene extends Phaser.Scene {
     this.header('FIM DE JOGO', 0x6dff6d);
     this.T(W / 2, 46, `${r.score} PONTOS`, { scale: 3, origin: [0.5, 0], color: 0xffe14d });
     this.T(W / 2, 74, `${r.fgm} CESTAS  +  ${r.ast} ASSISTENCIAS   -   ${r.poss} POSSES   -   ${r.pts} PONTOS NO PLACAR`, { origin: [0.5, 0], color: 0xd8d0ee });
-    this.T(W / 2, 86, `ARMADOR: ${r.pg}`, { origin: [0.5, 0], color: 0x6fa0ff });
+    this.T(W / 2, 86, `ARMADOR: ${r.pg}   -   TIME: ${r.teamName || '-'}`, { origin: [0.5, 0], color: 0x6fa0ff });
     let y = 104;
     if (p) {
       this.T(W / 2, y, `+${coins} MOEDAS  (TOTAL ${p.coins})`, { origin: [0.5, 0], color: 0xffe14d });
@@ -195,16 +201,17 @@ export default class CompetitiveScene extends Phaser.Scene {
         y += 12;
       }
       await saveProfile(p);
-      await submitScore({ name: p.name, score: r.score, baskets: r.fgm, assists: r.ast, pg: r.pg });
+      await submitScore({ name: p.name, score: r.score, baskets: r.fgm, assists: r.ast, pg: `${r.pg} | ${r.teamName || ''}` });
     } else this.T(W / 2, y, 'CONVIDADO: ENTRE NUMA CONTA PARA SALVAR NO RANKING', { origin: [0.5, 0], color: 0xff9a4d });
-    if (!this.sys.isActive()) return;
+    if (!this.sys.isActive() || gen !== this.gen) return;
     const rows = (await topScores(5)) || [];
-    if (!this.sys.isActive()) return;
+    if (!this.sys.isActive() || gen !== this.gen) return;
     y = Math.max(y + 8, 150);
     this.T(W / 2, y, 'TOP 5', { origin: [0.5, 0], color: 0x6fa0ff });
     rows.forEach((row, i) => {
       const hl = p && row.name === p.name && row.score === r.score;
-      this.T(W / 2, y + 12 + i * 10, `${i + 1}. ${row.name.padEnd(12)} ${String(row.score).padStart(4)}`, { origin: [0.5, 0], color: hl ? 0x6dff6d : 0xd8d0ee });
+      const team = String(row.pg || '').split(' | ')[1] || '-';
+      this.T(W / 2, y + 12 + i * 10, `${i + 1}. ${row.name.padEnd(12)} ${String(row.score).padStart(4)}   ${team.padEnd(13).slice(0, 13)}`, { origin: [0.5, 0], color: hl ? 0x6dff6d : 0xd8d0ee });
     });
     this.T(W / 2, VIEW.H - 30, 'ENTER: JOGAR DE NOVO    ESC: MENU', { origin: [0.5, 0], color: 0xb8b0d0 });
     this.onEnter = () => this.scene.start('Select', { survival: true });

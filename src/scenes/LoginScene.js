@@ -58,6 +58,7 @@ export default class LoginScene extends Phaser.Scene {
       st.textContent = CSS;
       document.head.appendChild(st);
     }
+    document.querySelectorAll('#login-ov').forEach((el) => el.remove()); // nunca dois
     const ov = document.createElement('div');
     ov.id = 'login-ov';
     ov.innerHTML = `
@@ -123,6 +124,7 @@ export default class LoginScene extends Phaser.Scene {
   destroyOverlay() {
     window.removeEventListener('resize', this.place);
     if (this.ov) this.ov.remove();
+    document.querySelectorAll('#login-ov').forEach((el) => el.remove());
     this.ov = null;
     this.input.keyboard.enabled = true;
     this.input.keyboard.enableGlobalCapture();

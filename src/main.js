@@ -47,5 +47,10 @@ const game = new Phaser.Game({
 window.addEventListener('resize', () => game.scale.setZoom(integerZoom()));
 // controle navega todos os menus (na partida, a GameScene lê o controle direto)
 installPadBridge(game);
+// segurança: os campos de texto do login só existem na tela de login
+game.events.on('step', () => {
+  const ov = document.getElementById('login-ov');
+  if (ov && !game.scene.isActive('Login')) ov.remove();
+});
 
 if (import.meta.env.DEV) window.__game = game;

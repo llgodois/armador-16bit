@@ -1066,7 +1066,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === 'done') return;
     this.state = 'done';
     const st = this.stats;
-    const result = { score: st.fgm + st.ast, fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name, team: this.homeTeam.era ? null : this.homeTeam.id };
+    const result = { score: st.fgm + st.ast, fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name, team: this.homeTeam.era ? null : this.homeTeam.id, teamName: this.homeTeam.name };
     this.events.emit('banner', 'FIM!', `${result.score} PONTOS`, 0xffe14d, 1.4);
     sfx.play('buzzer');
     this.time.delayedCall(1500, () => {
