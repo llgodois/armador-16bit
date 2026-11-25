@@ -154,7 +154,28 @@ export const CONTROLS_PAD = [
 export function drawControls(scene, g, x, y, w, depth = 10, pad = false) {
   const colW = Math.floor(w / 2);
   const cy = [y, y];
-  for (const sec of pad ? CONTROLS_PAD : CONTROLS) {
+  // versão 3D: comandos que só existem no 64
+  const extra = !THEME.modern
+    ? []
+    : [
+        {
+          title: 'SO NO 64',
+          color: 0x3ad6ff,
+          col: 1,
+          rows: pad
+            ? [
+                ['Analog. D', 'cross / hesita / giro'],
+                ['Analog. D baixo', 'arremesso (segure)'],
+                ['Analog. D diag.', 'step-back'],
+                ['RT + X no aro', 'enterrada'],
+              ]
+            : [
+                ['SHIFT + K aro', 'enterrada'],
+                ['V', 'trocar camera'],
+              ],
+        },
+      ];
+  for (const sec of [...(pad ? CONTROLS_PAD : CONTROLS), ...extra]) {
     const cx = x + sec.col * colW;
     let yy = cy[sec.col];
     new PixelText(scene, cx, yy, sec.title, { color: sec.color, depth });

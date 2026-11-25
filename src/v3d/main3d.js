@@ -27,7 +27,7 @@ import GameOverScene from '../scenes/GameOverScene.js';
 import LoginScene from '../scenes/LoginScene.js';
 import CompetitiveScene from '../scenes/CompetitiveScene.js';
 import { installPadBridge } from '../ui/padBridge.js';
-import World3D from './World3D.js';
+import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 
 // menus e placar com visual moderno (só nesta versão)
@@ -59,8 +59,30 @@ const game = new Phaser.Game({
 installPadBridge(game);
 // cada tela, ao ser criada, ganha o zoom e o fundo translúcido (a partida 2D fica escondida)
 game.events.once('ready', () => {
-  // regras que só existem no 64 (vida extra na Sobrevivência, enterrada no comando)
-  game.scene.getScene('Game').v64 = true;
+  // regras que só existem no 64 (vida extra na Sobrevivência, enterrada, Pro Stick, peso no movimento)
+  const gs = game.scene.getScene('Game');
+  gs.v64 = true;
+  // câmeras: a escolha fica salva; o menu de pausa e a tecla V trocam
+  gs.camModes = CAM_MODES;
+  try {
+    gs.camMode = CAM_MODES.some((c) => c.id === localStorage.getItem('camera3d')) ? localStorage.getItem('camera3d') : 'fundo';
+  } catch {
+    gs.camMode = 'fundo';
+  }
+  gs.setCamMode = (id) => {
+    gs.camMode = id;
+    try {
+      localStorage.setItem('camera3d', id);
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyV' || !game.scene.isActive('Game')) return;
+    const i = CAM_MODES.findIndex((c) => c.id === gs.camMode);
+    gs.setCamMode(CAM_MODES[(i + 1) % CAM_MODES.length].id);
+    gs.events.emit('toast', `CAMERA: ${CAM_MODES.find((c) => c.id === gs.camMode).name}`, 0x3ad6ff);
+  });
   for (const sc of game.scene.scenes) {
     if (sc.sys.settings.key === 'Game') continue;
     sc.events.on('create', () => styleScene(sc));

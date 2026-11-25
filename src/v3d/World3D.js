@@ -6,8 +6,15 @@ import { buildCourt, VS, toZ } from './court3d.js';
 import PlayerModel, { SIZE } from './PlayerModel.js';
 
 const BALL_R = 2.6;
-// câmera: altura e distância atrás do ponto que ela olha (mais baixa = aro visível)
-const CAM = { up: 118, back: 262 };
+// Câmeras da partida (escolha no menu de pausa ou tecla V; fica salva).
+//   fundo: atrás da linha de fundo, como no 16-bit · lateral: transmissão de TV · perto: atrás, mais baixa
+// up/back = altura e distância atrás do ponto que ela olha; yaw = quanto a tela está girada
+// em relação à quadra (o controle acompanha: "para cima" é sempre para cima na tela).
+export const CAM_MODES = [
+  { id: 'fundo', name: 'FUNDO', up: 118, back: 262, yaw: 0 },
+  { id: 'lateral', name: 'TV LATERAL', up: 170, back: 330, yaw: Math.PI / 2 },
+  { id: 'perto', name: 'PERTO', up: 78, back: 178, yaw: 0 },
+];
 // Textura da bola: laranja com gomos pretos (o giro fica visível).
 function ballTexture() {
   const cv = document.createElement('canvas');
@@ -85,6 +92,7 @@ export default class World3D {
     const s = (this.scene = new THREE.Scene());
     this.sun = addLights(s);
     this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark });
+    this.camId = null; // ginásio novo: reaplica a câmera (arquibancada escondida etc.)
 
     // bola
     const ballMat = new THREE.MeshLambertMaterial({ map: ballTexture(), flatShading: true });
@@ -420,10 +428,21 @@ export default class World3D {
   // segue o mesmo alvo da câmera 2D (entre você e a bola).
   syncCamera(g, dt) {
     const t = g.camTarget || g.user;
-    const want = new THREE.Vector3(240 + (t.x - 240) * 0.7, 26, toZ(t.y) - 6);
+    const cam = CAM_MODES.find((c) => c.id === g.camMode) || CAM_MODES[0];
+    g.camYaw = cam.yaw; // a GameScene gira o controle por esse ângulo
+    const lateral = cam.id === 'lateral';
+    // lateral: a câmera fica na lateral esquerda e corre ao longo da quadra; a arquibancada dela some
+    if (this.camId !== cam.id) {
+      this.camId = cam.id;
+      this.courtObj.arena.userData.hideSide(lateral ? 'left' : null);
+    }
+    const want = lateral
+      ? new THREE.Vector3(240 + (t.x - 240) * 0.35, 22, toZ(t.y))
+      : new THREE.Vector3(240 + (t.x - 240) * 0.7, 26, toZ(t.y) - 6);
     const k = dt > 0 ? 1 - Math.exp(-4 * dt) : 0;
     this.look.lerp(want, k);
-    this.camera.position.set(this.look.x, this.look.y + CAM.up, this.look.z + CAM.back);
+    if (lateral) this.camera.position.set(this.look.x - cam.back, this.look.y + cam.up, this.look.z);
+    else this.camera.position.set(this.look.x, this.look.y + cam.up, this.look.z + cam.back);
     this.camera.lookAt(this.look);
     // sombra acompanha o centro da cena (mapa de sombra mais nítido)
     this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
@@ -444,6 +463,7 @@ export default class World3D {
     const q = new THREE.Quaternion();
     const scl = new THREE.Vector3();
     fans.forEach((f, i) => {
+      if (f.hidden) return; // lado escondido pela câmera lateral
       f.m.decompose(pos, q, scl);
       if (this.cheer > 0) pos.y += Math.max(0, Math.sin(time / 90 + f.phase)) * 3;
       m.compose(pos, q, scl);

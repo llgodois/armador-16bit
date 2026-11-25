@@ -188,10 +188,11 @@ function arena() {
   const halfW = (COURT.right - COURT.left) / 2 + 60;
   const halfD = (toZ(COURT.bottom) - toZ(COURT.top)) / 2 + 60;
   const sides = [
-    { len: halfD * 2, pos: (d) => [cx - halfW - d, cz], rotY: Math.PI / 2 },
-    { len: halfD * 2, pos: (d) => [cx + halfW + d, cz], rotY: -Math.PI / 2 },
-    { len: halfW * 2, pos: (d) => [cx, cz - halfD - d], rotY: 0 },
+    { name: 'left', len: halfD * 2, pos: (d) => [cx - halfW - d, cz], rotY: Math.PI / 2 },
+    { name: 'right', len: halfD * 2, pos: (d) => [cx + halfW + d, cz], rotY: -Math.PI / 2 },
+    { name: 'top', len: halfW * 2, pos: (d) => [cx, cz - halfD - d], rotY: 0 },
   ];
+  const steps = [];
   // (sem arquibancada atrás da cesta de baixo: é onde fica a câmera)
   for (const s of sides) {
     for (let row = 0; row < 7; row++) {
@@ -202,6 +203,8 @@ function arena() {
       step.position.set(px, h / 2, pz);
       step.rotation.y = s.rotY;
       step.receiveShadow = true;
+      step.userData.side = s.name;
+      steps.push(step);
       g.add(step);
       const n = Math.floor((s.len + row * 18) / 6.5);
       for (let k = 0; k < n; k++) {
@@ -211,7 +214,7 @@ function arena() {
         const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, s.rotY, 0));
         const local = new THREE.Vector3(along, h + 3.5, 0).applyQuaternion(q);
         m.compose(new THREE.Vector3(px + local.x, local.y, pz + local.z), q, new THREE.Vector3(1, 0.8 + rnd() * 0.4, 1));
-        fans.push({ m, c: palette[Math.floor(rnd() * palette.length)], phase: rnd() * Math.PI * 2 });
+        fans.push({ m, side: s.name, c: palette[Math.floor(rnd() * palette.length)], phase: rnd() * Math.PI * 2 });
       }
     }
   }
@@ -222,7 +225,17 @@ function arena() {
     crowd.setColorAt(i, col.setHex(f.c));
   });
   g.add(crowd);
-  g.userData = { crowd, fans };
+  // esconde a arquibancada de um lado (a câmera lateral fica atrás dela)
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const hideSide = (name) => {
+    for (const st of steps) st.visible = st.userData.side !== name;
+    fans.forEach((f, i) => {
+      f.hidden = f.side === name;
+      crowd.setMatrixAt(i, f.hidden ? zero : f.m);
+    });
+    crowd.instanceMatrix.needsUpdate = true;
+  };
+  g.userData = { crowd, fans, hideSide };
   return g;
 }
 

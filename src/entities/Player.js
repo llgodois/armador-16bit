@@ -65,10 +65,30 @@ export default class Player {
   // Move numa direção (normalizada) com aceleração suave.
   moveDir(dx, dy, speed, dt) {
     if (this.slowT > 0) speed *= 0.45;
-    const tx = dx * speed;
-    const ty = dy * speed * PLAYER.verticalFactor;
-    const k = 1 - Math.exp(-PLAYER.accel * dt);
+    let tx = dx * speed;
+    let ty = dy * speed * PLAYER.verticalFactor;
+    let k = 1 - Math.exp(-PLAYER.accel * dt);
     const v = this.body.velocity;
+    // (só no 64, só você) movimento com PESO, estilo 2K: rápido, a curva abre e a freada demora.
+    // Dribles, bandeja e step-back ficam de fora (são arrancadas de propósito).
+    const sc = this.scene;
+    if (sc.v64 && this === sc.user && !(this.crossTimer > 0) && !(this.layupT > 0)) {
+      const vf = PLAYER.verticalFactor;
+      const cur = Math.hypot(v.x, v.y / vf);
+      const want = Math.hypot(tx, ty / vf);
+      if (cur > 45 && want > 10) {
+        // gira a direção atual no máximo "turn" rad/s rumo à desejada (mais rápido = curva mais aberta)
+        const agil = Math.min(1.25, Math.max(0.8, this.skills.speed || 1));
+        const turn = (15 - 7 * Math.min(1, (cur - 45) / 80)) * agil * dt; // rad/s: ~15 trotando, ~8 em sprint
+        const a0 = Math.atan2(v.y / vf, v.x);
+        let da = Math.atan2(ty / vf, tx) - a0;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        const a = a0 + Math.max(-turn, Math.min(turn, da));
+        tx = Math.cos(a) * want;
+        ty = Math.sin(a) * want * vf;
+        if (Math.abs(da) > 2.2) k *= 0.55; // cortar para trás em alta: freia antes de virar
+      } else if (want < 10 && cur > 70) k *= 0.6; // freada em sprint: escorrega um pouco
+    }
     v.x += (tx - v.x) * k;
     v.y += (ty - v.y) * k;
   }

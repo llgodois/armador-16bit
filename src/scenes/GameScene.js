@@ -907,6 +907,106 @@ export default class GameScene extends Phaser.Scene {
       this.prevBtn[name] = padDown;
     }
     this.pad = pad;
+    if (this.v64) this.readProStick(pad);
+  }
+
+  // ------------------------------------------------------------------ (só no 64) PRO STICK, estilo 2K
+  // Analógico direito, com a bola:
+  //   para baixo e segurar = arremesso (medidor; toque rápido = finta)
+  //   toque para o lado = crossover · para a cesta = hesitação (no garrafão: bandeja; + RT: enterrada)
+  //   diagonal para baixo (ou para longe da cesta) = step-back · girar o analógico = giro
+  // Na defesa: para cima = mão alta.
+  readProStick(pad) {
+    const ps = this.proStick || (this.proStick = { held: false, shoot: false, hands: false });
+    const sx = pad ? pad.axes[2] || 0 : 0;
+    const sy = pad ? pad.axes[3] || 0 : 0;
+    const mag = Math.hypot(sx, sy);
+    const now = this.time.now;
+    const u = this.user;
+    const withBall = !!u && !this.userOnDefense && this.ball.holder === u && this.ball.state === 'held';
+    const prevShoot = ps.shoot;
+    const prevHands = ps.hands;
+    this.stickMove = null;
+    if (mag > 0.75) {
+      const ang = Math.atan2(sy, sx);
+      if (!ps.held) {
+        ps.held = true;
+        ps.t0 = now;
+        ps.sx = sx / mag;
+        ps.sy = sy / mag;
+        ps.sweep = 0;
+        ps.lastAng = ang;
+        ps.fired = false;
+        ps.shoot = withBall && sy / mag > 0.92; // para baixo (reto): arremesso; na diagonal é step-back
+        ps.hands = !withBall && this.userOnDefense && sy / mag < -0.7; // defesa, para cima: mão alta
+      } else {
+        let d = ang - ps.lastAng;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        ps.sweep += d;
+        ps.lastAng = ang;
+        // meia volta no analógico = giro
+        if (!ps.fired && !ps.shoot && withBall && Math.abs(ps.sweep) > 2.4) {
+          ps.fired = true;
+          this.stickMove = { kind: 'spin' };
+        }
+      }
+    } else if (mag < 0.35 && ps.held) {
+      // soltou rápido: foi um "toque" naquela direção
+      if (!ps.fired && !ps.shoot && !ps.hands && withBall && now - ps.t0 < 350) this.stickMove = { kind: 'flick', sx: ps.sx, sy: ps.sy };
+      ps.held = false;
+      ps.shoot = false;
+      ps.hands = false;
+    }
+    // o analógico vira os botões de arremesso (K) e mão alta (LOB)
+    const merge = (b, on, was) => {
+      if (!on && !was) return;
+      b.isDown = b.isDown || on;
+      if (on && !was) b.just = true;
+      if (!on && was && !b.isDown) b.up = true;
+    };
+    merge(this.btn.K, ps.shoot, prevShoot);
+    merge(this.btn.LOB, ps.hands, prevHands);
+  }
+
+  // Direção da tela -> direção na quadra (a câmera do 3D pode estar girada: camYaw)
+  screenToWorld(x, y) {
+    if (!this.camYaw) return [x, y];
+    const c = Math.cos(this.camYaw);
+    const s = Math.sin(this.camYaw);
+    return [x * c - y * s, x * s + y * c];
+  }
+
+  useStickMove(u, ix, iy) {
+    const sm = this.stickMove;
+    this.stickMove = null;
+    if (sm.kind === 'spin') {
+      if (u.crossCooldown > 0.15 || this.stamina < STAMINA.crossCost * 0.5) return;
+      this.lastL = this.time.now - 100; // o giro do dribleMove é o "toque duplo"
+      this.lastMove = null;
+      return this.dribbleMove(ix || 0.001, iy, true);
+    }
+    const [fx, fy] = this.screenToWorld(sm.sx, sm.sy);
+    const bx = this.basket.x - u.x;
+    const by = this.basket.y - u.y;
+    const bl = Math.hypot(bx, by) || 1;
+    const toward = (fx * bx + fy * by) / bl;
+    if (toward > 0.6 && isLayupZone(u, this.dir) && !this.inbound) return this.startLayup(u); // + RT segurado: enterrada
+    if (u.crossCooldown > 0 || this.stamina < STAMINA.crossCost * 0.5) return;
+    // diagonal para baixo na tela, ou para longe da cesta: step-back
+    if (toward < -0.6 || sm.sy > 0.4) return this.dribbleStepBack(u, -bx / bl, -by / bl);
+    this.lastL = -1e9; // um toque só (não vira giro)
+    this.dribbleMove(fx, fy, true); // para a cesta = hesitação; para o lado = crossover
+  }
+
+  // step-back no drible: recua rápido e abre espaço para o arremesso
+  dribbleStepBack(u, ax, ay) {
+    u.crossDir = { x: ax, y: ay };
+    u.crossTimer = 0.22;
+    u.crossCooldown = CROSSOVER.cooldown;
+    this.stamina = Math.max(0, this.stamina - STAMINA.crossCost * 0.8);
+    this.floatText(u.x, u.y - u.headY - 18, 'STEP-BACK', 0x6fa0ff);
+    sfx.play('cross');
+    this.ankleCheck(0.6, 'RECUOU!');
   }
 
   isDoubled(p) {
@@ -1320,6 +1420,8 @@ export default class GameScene extends Phaser.Scene {
       // (o direcional chama jogadas, como no 2K; mover é no analógico)
 
     }
+    // (só no 64) a câmera pode estar girada: "para cima" no controle é sempre para cima na tela
+    [ix, iy] = this.screenToWorld(ix, iy);
     const im = Math.hypot(ix, iy);
     if (im) {
       ix /= im;
@@ -1460,6 +1562,8 @@ export default class GameScene extends Phaser.Scene {
     // (o giro é um toque duplo: vale mesmo durante a recarga do primeiro movimento)
     const spinTap = this.time.now - (this.lastL || -1e9) < 300 && this.lastMove !== 'spin';
     if (this.btn.L.just && hasBall && (u.crossCooldown <= 0 || spinTap) && this.stamina >= STAMINA.crossCost * 0.5) this.dribbleMove(ix, iy, moving);
+    // (só no 64) Pro Stick: drible/finalização pelo analógico direito
+    else if (this.stickMove && hasBall && !this.gathering) this.useStickMove(u, ix, iy);
     // L com a bola solta perto: mergulha na bola
     if (this.btn.L.just && ball.state === 'loose') this.dive(u);
 

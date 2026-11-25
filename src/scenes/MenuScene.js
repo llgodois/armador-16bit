@@ -79,34 +79,43 @@ export default class MenuScene extends Phaser.Scene {
     new PixelText(this, VIEW.W / 2, 62, 'PAUSADO', { scale: 2, origin: [0.5, 0], color: 0xffe14d });
     const sc = this.gs.score;
     new PixelText(this, VIEW.W / 2, 84, `${this.gs.homeTeam.name} ${sc.home} X ${sc.away} ${this.gs.awayTeam.name}`, { origin: [0.5, 0], color: 0xb8b0d0 });
+    // versão 3D: escolha da câmera (as opções vêm do próprio jogo 3D: gs.camModes)
+    const cams = this.gs.camModes;
+    const camLabel = () => `CAMERA: ${cams.find((c) => c.id === this.gs.camMode).name}`;
     const items = [
-      { label: 'CONTINUAR' },
-      { label: 'PLAYBOOK' },
-      { label: 'SUBSTITUICOES' },
-      { label: `TEMPO TECNICO (${this.gs.timeouts})` },
-      { label: 'CONTROLES' },
-      { label: 'REINICIAR PARTIDA' },
-      { label: 'SAIR PARA O TITULO', color: 0xff7b6b },
+      { id: 'resume', label: 'CONTINUAR' },
+      { id: 'book', label: 'PLAYBOOK' },
+      { id: 'subs', label: 'SUBSTITUICOES' },
+      { id: 'timeout', label: `TEMPO TECNICO (${this.gs.timeouts})` },
+      ...(cams ? [{ id: 'camera', label: camLabel(), color: 0x3ad6ff }] : []),
+      { id: 'controls', label: 'CONTROLES' },
+      { id: 'restart', label: 'REINICIAR PARTIDA' },
+      { id: 'quit', label: 'SAIR PARA O TITULO', color: 0xff7b6b },
     ];
-    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: 14 });
+    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 13 : 14 });
     this.onNav = (d) => {
       m.set(m.index + d);
       sfx.play('select');
     };
     this.onEnter = () => {
       sfx.play('select');
-      switch (m.index) {
-        case 0:
+      switch (items[m.index].id) {
+        case 'resume':
           return this.resumeGame();
-        case 1:
+        case 'book':
           return this.scene.restart({ game: this.gs, mode: 'playbook', from: 'pause' });
-        case 2:
+        case 'subs':
           return this.scene.restart({ game: this.gs, mode: 'subs', from: 'pause' });
-        case 3:
+        case 'timeout':
           return this.scene.restart({ game: this.gs, mode: 'timeout', from: 'pause' });
-        case 4:
+        case 'camera': {
+          const i = cams.findIndex((c) => c.id === this.gs.camMode);
+          this.gs.setCamMode(cams[(i + 1) % cams.length].id);
+          return m.label(m.index, camLabel());
+        }
+        case 'controls':
           return this.scene.restart({ game: this.gs, mode: 'controls', from: 'pause', padPage: !!(navigator.getGamepads && [...navigator.getGamepads()].some(Boolean)) });
-        case 5:
+        case 'restart':
           return this.scene.start('Game', this.gs.registry.get('setup'));
         default:
           this.scene.stop('Game');
