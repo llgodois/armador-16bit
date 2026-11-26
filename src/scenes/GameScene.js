@@ -1008,6 +1008,23 @@ export default class GameScene extends Phaser.Scene {
   useStickMove(u, ix, iy) {
     const sm = this.stickMove;
     this.stickMove = null;
+    // (64) perto do aro, o analógico direito escolhe a FINALIZAÇÃO (como no 2K)
+    if (isLayupZone(u, this.dir) && !this.inbound) {
+      const bx0 = this.basket.x - u.x;
+      const by0 = this.basket.y - u.y;
+      const bl0 = Math.hypot(bx0, by0) || 1;
+      if (sm.kind === 'spin') {
+        u.forceStyle = { style: 'spin' }; // girando: bandeja com giro (com RT: enterrada 360)
+        return this.startLayup(u);
+      }
+      const [gx, gy] = this.screenToWorld(sm.sx, sm.sy);
+      const tw = (gx * bx0 + gy * by0) / bl0;
+      if (tw > 0.85) u.forceStyle = { style: null }; // para a cesta: bandeja (com RT: enterrada)
+      else if (tw > 0.45) u.forceStyle = { style: 'floater' }; // diagonal: flutuante
+      else if (tw > -0.45) u.forceStyle = { style: 'euro', dir: { x: gx, y: gy } }; // para o lado: euro step
+      else u.forceStyle = { style: 'hop' }; // para trás: hop step
+      return this.startLayup(u);
+    }
     if (sm.kind === 'spin') {
       if (u.crossCooldown > 0.15 || this.stamina < STAMINA.crossCost * 0.5) return;
       this.lastL = this.time.now - 100; // o giro do dribleMove é o "toque duplo"
@@ -2701,7 +2718,20 @@ export default class GameScene extends Phaser.Scene {
     p.layupStyle = null;
     // (só no 64) segurando o sprint: pede ENTERRADA
     p.wantDunk = !!(this.v64 && p === this.user && this.btn.SHIFT.isDown);
-    if (p === this.user) {
+    p.dunkStyle = p.cm >= 203 ? 'two' : 'one'; // (visual no 64) altos enterram com as duas mãos
+    if (p === this.user && this.v64 && p.forceStyle) {
+      this.gathering = false;
+      const fs = p.forceStyle;
+      p.forceStyle = null;
+      p.layupStyle = fs.style;
+      if (fs.style === 'spin' && p.wantDunk) p.dunkStyle = '360';
+      if (fs.style === 'euro' && fs.dir) {
+        const lx = p.layupDir.x + fs.dir.x * 0.6;
+        const ly = p.layupDir.y + fs.dir.y * 0.6;
+        const ll = Math.hypot(lx, ly) || 1;
+        p.layupDir = { x: lx / ll, y: ly / ll };
+      }
+    } else if (p === this.user) {
       this.gathering = false;
       // tipo de bandeja pelo comando (como no 2K):
       //   L segurado -> REVERSA (do outro lado do aro: difícil de tocar)
@@ -2781,6 +2811,23 @@ export default class GameScene extends Phaser.Scene {
       blockMult *= 0.75;
       foulMult = 1.7;
       chance *= 1.03;
+    } else if (style === 'spin') {
+      label = 'GIRO NA BANDEJA'; // (64) foge do toco, um pouco menos certeira
+      blockMult *= 0.55;
+      chance *= 0.93;
+    } else if (style === 'uau') {
+      label = 'UP AND UNDER'; // (64) depois da finta de costas: por baixo de quem pulou
+      blockMult *= 0.3;
+      chance *= 1.05;
+    } else if (style === 'floater') {
+      kind = 'floater'; // (64) flutuante pedido no analógico: por cima do pivô
+      label = 'FLUTUANTE';
+      chance = 0.5 * p.skills.mid * this.contestFactor(p, 18, 0.75);
+      blockMult *= 0.4;
+    }
+    if (dunk && p.dunkStyle === '360') {
+      label = 'ENTERRADA 360!';
+      chance *= 0.92;
     }
     if (p.team === 'away') chance *= this.difficulty.shoot;
     chance *= this.readMult(p) * this.heatMult(p) * this.energyMult(p) * this.adjMult(p, 'fin') * this.zoneMult(p, 'garrafao') * this.badgeMult(p);

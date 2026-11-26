@@ -196,6 +196,53 @@ function dropStep(g, u, side) {
   g.ankleCheck(0.9, 'PASSOU!');
 }
 
+// finta de costas: o marcador pode pular (e abre o up-and-under)
+function postFake(g, u) {
+  u.uauAt = g.time.now;
+  u.setPose('shoot', 0.2);
+  g.floatText(u.x, u.y - u.headY - 18, 'FINTA', 0x6fa0ff);
+  const d = g.defenderOf(u);
+  if (d && d.stun <= 0 && d.distTo(u) < 24 && Math.random() < 0.55 / d.skills.defense) {
+    d.stun = 0.55;
+    d.lift = 6;
+    d.setPose('shoot', 0.4);
+    g.floatText(d.x, d.y - d.headY - 6, 'PULOU!', 0xffe14d);
+  }
+}
+
+// up-and-under: depois da finta, passa por baixo do marcador e finaliza
+function upAndUnder(g, u) {
+  u.uauAt = 0;
+  u.post = false;
+  u.lookAlways = false;
+  u.forceStyle = { style: 'uau' };
+  g.startLayup(u);
+}
+
+// dream shake: giro de costas com finta, sai pelo outro lado rumo à cesta
+function dreamShake(g, u, b) {
+  const d = g.defenderOf(u);
+  const side = d ? -(Math.sign((d.x - u.x) * b.y - (d.y - u.y) * b.x) || 1) : 1;
+  const a = side * 1.15;
+  u.crossDir = { x: b.x * Math.cos(a) - b.y * Math.sin(a), y: b.x * Math.sin(a) + b.y * Math.cos(a) };
+  u.crossTimer = 0.36;
+  u.crossCooldown = 0.7;
+  u.post = false;
+  u.lookAlways = false;
+  g.stamina = Math.max(0, g.stamina - STAMINA.crossCost);
+  g.floatText(u.x, u.y - u.headY - 18, 'DREAM SHAKE', 0x6fa0ff);
+  sfx.play('cross');
+  g.ankleCheck(1.15, 'BALANCOU!');
+}
+
+// vira de frente para o aro (sai das costas para a ameaça tripla)
+function faceUp(g, u) {
+  u.post = false;
+  u.lookAlways = false;
+  u.triple = 1.0;
+  g.floatText(u.x, u.y - u.headY - 18, 'DE FRENTE', 0x6fa0ff);
+}
+
 function fadeaway(g, u) {
   const b = dirTo(u, g.basket);
   u.post = false;
@@ -280,18 +327,48 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
     u.lookAlways = true;
     const sm = g.stickMove;
     g.stickMove = null;
-    // drop step: analógico direito para o lado ou B (lado = o do analógico esquerdo, se houver)
+    // analógico direito girando: DREAM SHAKE
+    if (sm && sm.kind === 'spin') {
+      dreamShake(g, u, b);
+      return true;
+    }
+    // analógico direito: para trás = vira de frente · para a cesta = força (hop) · para o lado = drop step
+    // B = drop step (lado = o do analógico esquerdo, se houver)
     if ((sm && sm.kind === 'flick') || g.btn.L.just) {
       let sx = sm ? sm.sx : ix;
       let sy = sm ? sm.sy : iy;
       if (sm) [sx, sy] = g.screenToWorld(sx, sy);
-      const side = Math.sign(sx * b.y - sy * b.x) || 1;
-      dropStep(g, u, side);
+      const tw = sm ? sx * b.x + sy * b.y : 0;
+      if (tw < -0.5) {
+        u.post = false;
+        u.lookAlways = false;
+        faceUp(g, u);
+      } else if (tw > 0.6) {
+        u.post = false;
+        u.lookAlways = false;
+        u.forceStyle = { style: 'hop' };
+        g.startLayup(u);
+      } else dropStep(g, u, Math.sign(sx * b.y - sy * b.x) || 1);
       return true;
     }
+    // X: toque = finta (abre o up-and-under por 0,9 s) · segurando = gancho (perto) / fadeaway (longe)
+    const now = g.time.now;
     if (g.btn.K.just) {
+      if (now - (u.uauAt || -1e9) < 900) {
+        upAndUnder(g, u);
+        return true;
+      }
+      u.postKAt = now;
+    }
+    if (u.postKAt && g.btn.K.isDown && now - u.postKAt > 160) {
+      u.postKAt = 0;
       if (b.d < HOOK_RANGE) postHook(g, u);
       else fadeaway(g, u);
+      return true;
+    }
+    if (u.postKAt && !g.btn.K.isDown) {
+      u.postKAt = 0;
+      postFake(g, u);
       return true;
     }
     if (g.btn.J.just) {
@@ -318,6 +395,8 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
   if (u.post) {
     u.post = false;
     u.lookAlways = false;
+    // soltou o LT de costas: vira de frente para o aro (ameaça tripla), como no 2K
+    if (!g.gathering && !(u.crossTimer > 0)) faceUp(g, u);
   }
   // ---- proteger a bola (LT longe do garrafão)
   protectBall(g, u, !!(g.btn.PROTECT && g.btn.PROTECT.isDown) && !g.gathering);

@@ -72,12 +72,16 @@ export default class PlayerModel {
       this.finish = s.takeoff;
       this.finishT = s.takeoff === 'dunk' ? 0.85 : 0.65;
       this.jumpV = s.takeoff === 'dunk' ? DUNK_V : LAYUP_V;
+      this.startSpin(s);
     }
     if (s.shotStart) {
       if (s.shotStart === 'dunk') {
         this.finish = 'dunk';
         this.finishT = 0.75;
-        if (this.jumpY < 4) this.jumpV = DUNK_V;
+        if (this.jumpY < 4) {
+          this.jumpV = DUNK_V;
+          this.startSpin(s);
+        }
       } else if (s.shotStart === 'layup' || s.shotStart === 'floater') {
         this.finish = 'layup';
         this.finishT = 0.55;
@@ -214,6 +218,12 @@ export default class PlayerModel {
     // quadril gira com a passada; o tronco compensa ao contrário
     const twist = gait === 'run' && !air ? Math.sin(this.phase) * 0.1 * A : 0;
     this.body.rotation.y = this.yaw + twist;
+    // enterrada 360 / bandeja com giro: uma volta inteira no ar
+    if (this.spinTotal && air) {
+      this.spinT += dt;
+      const u = Math.min(1, this.spinT / 0.45);
+      this.body.rotation.y += this.spinTotal * u * u * (3 - 2 * u);
+    } else if (!air) this.spinTotal = 0;
     this.torso.rotation.y = approach(this.torso.rotation.y, -twist * 2.2, k(20));
     // inclina para dentro da curva; balança se desequilibrado
     const roll = -clamp(yawRate * 0.045, -0.3, 0.3) * clamp(spd / 60, 0, 1);
@@ -248,7 +258,12 @@ export default class PlayerModel {
       r.y += this.hangT > 0 ? 1 : 5;
       qR = this.aimWorld(R, r);
       eR = -0.1;
-      if (this.hangT > 0) {
+      if (s.finishStyle === 'two') {
+        // duas mãos: os dois braços por cima do aro
+        qL = this.aimWorld(L, r.clone().add(new THREE.Vector3(-2.5, 0, 0)));
+        qR = this.aimWorld(R, r.clone().add(new THREE.Vector3(2.5, 0, 0)));
+        eL = -0.1;
+      } else if (this.hangT > 0) {
         qL = this.aimWorld(L, s.rim.clone().add(new THREE.Vector3(3, 1, 0)));
         eL = -0.15;
       } else {
@@ -412,6 +427,12 @@ export default class PlayerModel {
       R.sh.quaternion.slerp(eulerQ(0.9, 0, 0.5), fk);
     }
     this.root.updateMatrixWorld(true);
+  }
+
+  // giro no ar (enterrada 360 ou bandeja com giro)
+  startSpin(s) {
+    this.spinTotal = s.finishStyle === '360' || s.finishStyle === 'spin' ? Math.PI * 2 : 0;
+    this.spinT = 0;
   }
 
   // Reações depois do arremesso (chamadas pela cena 3D quando a bola cai ou bate no aro)

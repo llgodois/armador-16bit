@@ -352,6 +352,8 @@ export default class World3D {
           sprinting: !!p.sprinting,
           // últimas passadas da bandeja: já sai do chão (enterrada se você pediu com o sprint)
           takeoff: !replay && p.layupT > 0 && p.layupT < 0.16 ? (p.wantDunk ? 'dunk' : 'layup') : alleyTakeoff(b, p),
+          // (64) estilo da finalização: two / 360 (enterrada) ou spin / floater... (bandeja)
+          finishStyle: p.wantDunk || (b.shot && b.shot.shooter === p && b.shot.kind === 'dunk') ? p.dunkStyle : p.layupStyle,
           // (64) ameaça tripla, de costas, contato e jab: poses próprias
           triple: !replay && holding && p.triple > 0,
           post: !replay && holding && !!p.post,
