@@ -55,10 +55,46 @@ function firstStep(g, u, dx, dy) {
   g.ankleCheck(0.75, 'PASSOU!');
 }
 
+// ------------------------------------------------------------------ botões do 64
+// LT / Q  = PROTEGER a bola (longe do garrafão) ou jogo de costas (perto)
+// LB / C  = toque: chama o bloqueio · segurando com a bola: visão de quadra
+//           (sem a bola, segurar continua sendo "você bloqueia")
+export function remapButtons64(g) {
+  const u = g.user;
+  const now = g.time.now;
+  const hasBall = !!u && !g.userOnDefense && g.ball.holder === u && g.ball.state === 'held';
+  g.btn.PROTECT = g.btn.VISION; // o que era a visão (LT/Q) vira proteger
+  // teclado: C segurado (com a bola) = visão; toque rápido = bloqueio
+  const key = g.keys.SCREEN;
+  let keyTap = false;
+  if (key && key.isDown) {
+    if (!g.cDownAt) g.cDownAt = now;
+  } else if (g.cDownAt) {
+    keyTap = now - g.cDownAt < 180;
+    g.cDownAt = 0;
+  }
+  const keyHold = !!(key && key.isDown && g.cDownAt && now - g.cDownAt > 180);
+  g.screenTap64 = keyTap || g.padScreenTap;
+  const hold = hasBall && (keyHold || g.lbVision64);
+  const prev = !!g.vision64Prev;
+  g.btn.VISION = { isDown: hold, just: hold && !prev, up: !hold && prev };
+  g.vision64Prev = hold;
+}
+
 // ------------------------------------------------------------------ jogo de costas
 export function wantsPost(g) {
   const u = g.user;
-  return !!(u && !g.userOnDefense && g.ball.holder === u && g.ball.state === 'held' && g.btn.VISION && g.btn.VISION.isDown && distToBasket(u, g.dir) < POST_RANGE);
+  const lt = g.btn.PROTECT || g.btn.VISION;
+  return !!(u && !g.userOnDefense && g.ball.holder === u && g.ball.state === 'held' && lt && lt.isDown && distToBasket(u, g.dir) < POST_RANGE);
+}
+
+// ---- proteger a bola (LT longe do garrafão): bola do lado oposto ao marcador, roubo bem mais
+// difícil (a IA tem 30% da chance), anda mais devagar e sem sprint
+function protectBall(g, u, on) {
+  u.protect = on;
+  if (!on) return;
+  const d = g.defenderOf(u);
+  if (d) g.ball.side = Math.sign(u.x - d.x) || g.ball.side || 1;
 }
 
 function postHook(g, u) {
@@ -146,6 +182,7 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
   }
   if (!hasBall) {
     u.triple = 0;
+    u.protect = false;
     if (u.post) {
       u.post = false;
       u.lookAlways = false;
@@ -164,6 +201,7 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
 
   // ---- jogo de costas (segure LT / Q perto do garrafão)
   if (wantsPost(g) && !g.gathering && !(u.crossTimer > 0)) {
+    u.protect = false;
     if (!u.post) {
       u.post = true;
       u.triple = 0;
@@ -213,6 +251,9 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
     u.post = false;
     u.lookAlways = false;
   }
+  // ---- proteger a bola (LT longe do garrafão)
+  protectBall(g, u, !!(g.btn.PROTECT && g.btn.PROTECT.isDown) && !g.gathering);
+  if (u.protect) u.triple = 0;
 
   // ---- ameaça tripla (acabou de receber, ainda não quicou)
   if (u.triple > 0 && !g.gathering) {

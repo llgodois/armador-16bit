@@ -1,7 +1,7 @@
 // Desenha a partida da GameScene em 3D. Só LÊ o estado do jogo: posições,
 // bola, estado da partida e os indicadores (anel, alvo do passe, medidor...).
 import * as THREE from 'three';
-import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET } from '../config.js';
+import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET, VISION, OFFENSE } from '../config.js';
 import { buildCourt, VS, toZ } from './court3d.js';
 import PlayerModel, { SIZE } from './PlayerModel.js';
 
@@ -55,6 +55,11 @@ function fallStart(m, p, replay) {
   const started = !replay && st >= 0.6 && (m.prevStun || 0) <= 0.05 && (p.lift || 0) < 1;
   m.prevStun = st;
   return started ? st : 0;
+}
+
+// peito do marcador (o braço de quem protege a bola encosta aqui)
+function guardPoint(d) {
+  return new THREE.Vector3(d.x, 22, toZ(d.y));
 }
 
 // ponte aérea: quem vai receber sobe para pegar a bola no ar (e enterra)
@@ -210,7 +215,8 @@ export default class World3D {
     const dt = Math.min(0.05, Math.max(0, (time - this.lastTime) / 1000));
     this.lastTime = time;
     const paused = !g.scene.isActive('Game');
-    const fdt = paused ? 0 : dt;
+    // visão de quadra: o jogo anda em câmera lenta, e as animações do 3D também
+    const fdt = paused ? 0 : dt * (g.visionOn ? VISION.timeScale : 1);
 
     const replay = g.state === 'replay' && g.replay ? g.replay.frames[Math.floor(g.replay.i)] : null;
     this.syncPlayers(g, replay, fdt, time);
@@ -303,7 +309,10 @@ export default class World3D {
           // parar atrás dele. Aqui a bola fica ao lado e um pouco à frente do CORPO; o lado vem do
           // drible do jogo (sideCur: -1..1, muda no crossover).
           const yaw = m.yaw;
-          const side = b.sideCur || 1;
+          // protegendo (LT): a bola vai para o lado do corpo oposto ao marcador
+          let side = b.sideCur || 1;
+          const dm = p.protect && g.defenderOf(p);
+          if (dm) side = (dm.x - x) * Math.cos(yaw) - (dm.y - y) * Y_SCALE * Math.sin(yaw) > 0 ? -1 : 1;
           const ps = m.heightUnits / SIZE;
           const lx = side * 5.5 * ps; // para o lado (mão do drible)
           const lz = 3.2 * ps; // um pouco à frente
@@ -346,6 +355,8 @@ export default class World3D {
           triple: !replay && holding && p.triple > 0,
           post: !replay && holding && !!p.post,
           bump: !replay && now - (p.bumpAt ?? -1e9) < 280,
+          protect: !replay && holding && !!p.protect,
+          guardWorld: !replay && holding && p.protect && g.defenderOf(p) ? guardPoint(g.defenderOf(p)) : null,
           jab: !replay && now - (p.jabAt ?? -1e9) < 220 ? p.jabSide || 1 : 0,
           // (64) ankle breaker: o desequilíbrio forte (drible que quebra) derruba no chão
           fallStart: fallStart(m, p, replay),
@@ -681,6 +692,7 @@ export default class World3D {
   drawOverlay(g, dt, time) {
     const c = this.ctx;
     c.clearRect(0, 0, this.W, this.H);
+    if (g.visionOn && g.user) this.drawVision(g, time);
     this.drawRoutes(g, time);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -790,6 +802,45 @@ export default class World3D {
     c.font = `600 ${Math.round(fs * 0.6)}px "Barlow Condensed", sans-serif`;
     const pos = { PG: 'ARMADOR', SG: 'ALA-ARMADOR', SF: 'ALA', PF: 'ALA-PIVO', C: 'PIVO' }[ic.role] || ic.role;
     c.fillText(`${pos}  ·  ${(ic.cm / 100).toFixed(2).replace('.', ',')} M${ic.nick ? `  ·  "${String(ic.nick).toUpperCase()}"` : ''}`, x + fs * 0.6, y + fs * 1.5);
+  }
+
+  // Visão de quadra (LB segurado): linhas de passe até cada companheiro e quem nega a linha.
+  //   verde = livre · amarelo = marcado · vermelho = linha arriscada (interceptação)
+  drawVision(g, time) {
+    const c = this.ctx;
+    const u = g.user;
+    // a tela escurece um pouco: você está "pausando para ler"
+    c.fillStyle = 'rgba(6,12,28,0.22)';
+    c.fillRect(0, 0, this.W, this.H);
+    const from = this.project(u.x, u.y, this.headOf(u) * 0.62);
+    for (const t of g.offTeam || []) {
+      if (t === u) continue;
+      const risk = g.laneRisk(u, t);
+      const open = g.nearestDefenderDist(t);
+      const col = risk < 9 ? '#ff5a4d' : open >= OFFENSE.openDist ? '#6dff6d' : '#ffe14d';
+      const to = this.project(t.x, t.y, this.headOf(t) * 0.62);
+      c.lineCap = 'round';
+      c.strokeStyle = 'rgba(0,0,0,0.55)';
+      c.lineWidth = 5;
+      c.beginPath();
+      c.moveTo(from.x, from.y);
+      c.lineTo(to.x, to.y);
+      c.stroke();
+      c.strokeStyle = col;
+      c.lineWidth = 2.5;
+      c.stroke();
+      c.fillStyle = col;
+      c.beginPath();
+      c.arc(to.x, to.y, 4 + Math.abs(Math.sin(time / 200)) * 1.5, 0, Math.PI * 2);
+      c.fill();
+    }
+    // defensores negando a linha de passe: marca laranja sobre a cabeça
+    for (const d of g.defTeam || []) {
+      if (!d.denying) continue;
+      const s = this.project(d.x, d.y, this.headOf(d) + 6);
+      c.fillStyle = '#ff9a4d';
+      c.fillRect(s.x - 2, s.y - 6, 4, 8);
+    }
   }
 
   // Rotas da jogada chamada, desenhadas NO CHÃO (projetadas em perspectiva).

@@ -65,6 +65,7 @@ export default class Player {
   // Move numa direção (normalizada) com aceleração suave.
   moveDir(dx, dy, speed, dt) {
     if (this.slowT > 0) speed *= 0.45;
+    if (this.protect) speed *= 0.72; // (só no 64) protegendo a bola: passo curto
     let tx = dx * speed;
     let ty = dy * speed * PLAYER.verticalFactor;
     let k = 1 - Math.exp(-PLAYER.accel * dt);

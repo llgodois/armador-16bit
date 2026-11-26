@@ -434,6 +434,7 @@ export default class DefenseAI {
     if (man.sprinting || man.crossTimer > 0) chance += DEFENSE.stealExposedBonus;
     if (man !== g.user) chance *= DEFENSE.stealVsAiMult;
     if (g.isDoubled(man)) chance *= 2.2;
+    if (man.protect) chance *= 0.3; // (só no 64) protegendo a bola com o LT
     if (this.scheme().press && inBackcourt(man, g.dir)) chance *= 1.5;
     if (Math.random() < chance) g.onSteal(d, man);
     else g.maybeReachFoul(d, man);

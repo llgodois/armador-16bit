@@ -160,7 +160,8 @@ export default class PlayerModel {
       land * 0.8 +
       (gait === 'shuffle' ? 0.35 : 0) +
       (s.triple && !air ? 0.35 : 0) + // ameaça tripla: base baixa
-      (s.post && !air ? 0.6 : 0); // de costas: bem agachado
+      (s.post && !air ? 0.6 : 0) + // de costas: bem agachado
+      (s.protect && !air ? 0.4 : 0); // protegendo a bola: base baixa
     const kl = k(26);
     for (const [i, leg] of this.legs.entries()) {
       const ph = this.phase + (i ? Math.PI : 0);
@@ -224,6 +225,7 @@ export default class PlayerModel {
       (gait === 'back' ? -0.08 : 0) +
       (s.triple ? 0.18 : 0) +
       (s.post ? 0.35 : 0) +
+      (s.protect ? 0.25 : 0) +
       (s.bump ? -0.45 : 0); // contato: o tronco vai para trás
     this.torso.rotation.x = approach(this.torso.rotation.x, lean, k(14));
     this.torso.scale.y = 1 + (gait === 'idle' ? Math.sin(time / 650) * 0.012 : 0); // respiração
@@ -345,6 +347,16 @@ export default class PlayerModel {
           eL = -0.2;
           qR = eulerQ(-0.8, 0, 0.5);
           eR = -0.9;
+        }
+        // protegendo (LT): o braço livre estica e segura o marcador longe da bola
+        if (s.protect && s.guardWorld) {
+          if (s.dribble.side > 0) {
+            qL = this.aimWorld(L, s.guardWorld);
+            eL = -0.3;
+          } else {
+            qR = this.aimWorld(R, s.guardWorld);
+            eR = -0.3;
+          }
         }
       }
     }

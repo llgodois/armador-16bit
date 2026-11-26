@@ -167,16 +167,25 @@ export function drawControls(scene, g, x, y, w, depth = 10, pad = false) {
                 ['Analog. D', 'cross/hesita/giro/jab'],
                 ['Analog. D baixo', 'arremesso (segure)'],
                 ['Analog. D diag.', 'step-back'],
-                ['RT+X aro / LT', 'enterrada / de costas'],
+                ['RT + X no aro', 'enterrada'],
               ]
             : [
                 ['SHIFT + K aro', 'enterrada'],
-                ['Q no garrafao', 'de costas'],
                 ['V', 'trocar camera'],
               ],
         },
       ];
-  for (const sec of [...(pad ? CONTROLS_PAD : CONTROLS), ...extra]) {
+  // no 64 o LT/Q protege a bola e o LB/C segurado é a visão de quadra
+  const ROWS64 = {
+    'LT / L2': 'proteger / de costas',
+    'LB segure': 'visao (com bola)/bloqueia',
+    Q: 'proteger / de costas',
+    C: 'toque bloqueio/segure visao',
+  };
+  const base = (pad ? CONTROLS_PAD : CONTROLS).map((sec) =>
+    THEME.modern && sec.title === 'ATAQUE' ? { ...sec, rows: sec.rows.map(([k, v]) => [k, ROWS64[k] || v]) } : sec,
+  );
+  for (const sec of [...base, ...extra]) {
     const cx = x + sec.col * colW;
     let yy = cy[sec.col];
     new PixelText(scene, cx, yy, sec.title, { color: sec.color, depth });

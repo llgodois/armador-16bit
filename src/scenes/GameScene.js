@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -873,7 +873,13 @@ export default class GameScene extends Phaser.Scene {
     if (pad && (Object.values(now).some(Boolean) || Math.hypot(pad.axes[0] || 0, pad.axes[1] || 0) > 0.4)) this.lastInputPad = true;
     this.prevRaw = now;
     const modIcon = now[P.ICON];
-    const modCmd = now[P.E];
+    // (só no 64) LB segurado com a bola = visão de quadra: aí o LB deixa de ser o "comando + botão"
+    // e os botões fazem a ação normal (dá para passar com A durante a visão)
+    const u64 = this.user;
+    const lbVision64 = !!(this.v64 && u64 && !this.userOnDefense && this.ball && this.ball.holder === u64 && this.ball.state === 'held' &&
+      now[P.SCREEN] && this.lbAt && this.time.now - this.lbAt > 180 && !this.lbUsed);
+    this.lbVision64 = lbVision64;
+    const modCmd = now[P.E] && !lbVision64;
     this.padMod = modIcon ? 'icon' : modCmd ? 'cmd' : null;
     this.padNum = null;
     this.padPlay = null;
@@ -889,7 +895,8 @@ export default class GameScene extends Phaser.Scene {
       this.lbUsed = false;
     }
     if (now[lb] && (this.padNum !== null || dpad >= 0)) this.lbUsed = true;
-    this.padScreenTap = !now[lb] && !!prevRaw[lb] && !this.lbUsed && this.time.now - (this.lbAt || 0) < 350;
+    // (no 64 o toque precisa ser curto: segurar é a visão de quadra)
+    this.padScreenTap = !now[lb] && !!prevRaw[lb] && !this.lbUsed && this.time.now - (this.lbAt || 0) < (this.v64 ? 180 : 350);
     this.padScreenHold = now[lb] && !this.lbUsed && this.time.now - (this.lbAt || 0) > 120;
     if (dpad >= 0) this.padPlay = dpad + (modCmd ? 4 : 0);
     const pb = (i) => !this.padMod && now[i];
@@ -918,7 +925,10 @@ export default class GameScene extends Phaser.Scene {
       this.prevBtn[name] = padDown;
     }
     this.pad = pad;
-    if (this.v64) this.readProStick(pad);
+    if (this.v64) {
+      remapButtons64(this); // LT = proteger · LB segurado = visão · LB toque = bloqueio
+      this.readProStick(pad);
+    }
   }
 
   // ------------------------------------------------------------------ (só no 64) PRO STICK, estilo 2K
@@ -1471,7 +1481,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   sprintAndStamina(u, moving, dt) {
-    u.sprinting = this.btn.SHIFT.isDown && moving && this.stamina > STAMINA.minToSprint;
+    u.sprinting = this.btn.SHIFT.isDown && moving && this.stamina > STAMINA.minToSprint && !u.protect; // (64: protegendo a bola, sem sprint)
     // seu gás também depende do jogador (resistência): uns aguentam mais, outros gastam mais
     if (u.sprinting) this.stamina = Math.max(0, this.stamina - u.skills.gasDrain * dt);
     else this.regenStamina(dt);
@@ -1574,7 +1584,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // CHAMAR BLOQUEIO (C / toque no LB) com a bola: o grandalhão mais perto vem bloquear seu marcador
-    if (hasBall && (this.btn.SCREEN.just || this.padScreenTap) && !this.inbound) this.callScreen();
+    const screenCall = this.v64 ? this.screenTap64 : this.btn.SCREEN.just || this.padScreenTap; // (64: toque curto)
+    if (hasBall && screenCall && !this.inbound) this.callScreen();
     // VOCÊ BLOQUEIA (segure C / LB sem a bola): fica plantado e trava quem bater em você
     const screening = !hasBall && (this.btn.SCREEN.isDown || this.padScreenHold) && ball.state !== 'loose';
     this.userScreening(u, screening, dt);

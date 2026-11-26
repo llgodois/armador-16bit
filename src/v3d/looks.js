@@ -248,7 +248,7 @@ const RAW = {
   'Shai Gilgeous-Alexander': 'e short k 0',
   'Shaquille O\'Neal': 'f bald k 1 B',
   'Shawn Marion': 'e short k 0',
-  'Stephen Curry': 'c short k 1',
+  'Stephen Curry': 'd short k 1',
   'Stephon Castle': 'e short k 0',
   'Steve Nash': 'a long n 0',
   'Tayshaun Prince': 'e short k 0',
