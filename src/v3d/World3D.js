@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET, VISION, OFFENSE } from '../config.js';
 import { buildCourt, VS, toZ } from './court3d.js';
 import PlayerModel, { SIZE } from './PlayerModel.js';
+import { MATE_ACTIONS } from '../game/mech64.js';
 
 const BALL_R = 2.6;
 // Câmeras da partida (escolha no menu de pausa ou tecla V; fica salva).
@@ -726,8 +727,10 @@ export default class World3D {
       c.globalAlpha = 1;
     }
 
+    // (64) LB segurado: menu de companheiros (escolher -> ação)
+    if (g.sel64) this.drawMateMenu(g, time);
     // ícones de passe (segure J): 1..4
-    if (g.icons) {
+    else if (g.icons) {
       c.font = '800 11px "Barlow Condensed", sans-serif';
       for (const [i, ic] of g.icons.entries()) {
         if (!ic.bg.visible) continue;
@@ -802,6 +805,109 @@ export default class World3D {
     c.font = `600 ${Math.round(fs * 0.6)}px "Barlow Condensed", sans-serif`;
     const pos = { PG: 'ARMADOR', SG: 'ALA-ARMADOR', SF: 'ALA', PF: 'ALA-PIVO', C: 'PIVO' }[ic.role] || ic.role;
     c.fillText(`${pos}  ·  ${(ic.cm / 100).toFixed(2).replace('.', ',')} M${ic.nick ? `  ·  "${String(ic.nick).toUpperCase()}"` : ''}`, x + fs * 0.6, y + fs * 1.5);
+  }
+
+  // Ícone de um botão de face (0=A/✕ 1=B/○ 2=X/□ 3=Y/△) no estilo escolhido (Xbox / PS / teclado)
+  drawGlyph(x, y, face, r, mode) {
+    const c = this.ctx;
+    c.save();
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    if (mode === 'teclado') {
+      c.fillStyle = '#10101a';
+      c.fillRect(x - r - 1, y - r - 1, 2 * r + 2, 2 * r + 2);
+      c.fillStyle = '#ffe14d';
+      c.fillRect(x - r, y - r, 2 * r, 2 * r);
+      c.fillStyle = '#1a1222';
+      c.font = `800 ${Math.round(r * 1.6)}px "Barlow Condensed", sans-serif`;
+      c.fillText(String(face + 1), x, y + 1);
+    } else if (mode === 'ps') {
+      const col = ['#7fb2ff', '#ff6b6b', '#ff8fd0', '#5ee08a'][face];
+      c.fillStyle = '#15171f';
+      c.beginPath();
+      c.arc(x, y, r + 1, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = col;
+      c.lineWidth = Math.max(1.5, r * 0.25);
+      const s = r * 0.5;
+      c.beginPath();
+      if (face === 0) {
+        c.moveTo(x - s, y - s);
+        c.lineTo(x + s, y + s);
+        c.moveTo(x + s, y - s);
+        c.lineTo(x - s, y + s);
+      } else if (face === 1) c.arc(x, y, s, 0, Math.PI * 2);
+      else if (face === 2) c.rect(x - s, y - s, 2 * s, 2 * s);
+      else {
+        c.moveTo(x, y - s * 1.1);
+        c.lineTo(x + s, y + s * 0.8);
+        c.lineTo(x - s, y + s * 0.8);
+        c.closePath();
+      }
+      c.stroke();
+    } else {
+      const col = ['#3ddc5a', '#ff5a4d', '#3a8fff', '#ffd23d'][face];
+      c.fillStyle = '#10101a';
+      c.beginPath();
+      c.arc(x, y, r + 1, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = col;
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = face === 3 ? '#1a1222' : '#ffffff';
+      c.font = `800 ${Math.round(r * 1.4)}px "Barlow Condensed", sans-serif`;
+      c.fillText('ABXY'[face], x, y + 1);
+    }
+    c.restore();
+  }
+
+  // LB segurado: botão sobre cada companheiro; escolhido um, o menu de ações sobre ele
+  drawMateMenu(g, time) {
+    const c = this.ctx;
+    const sel = g.sel64;
+    const mode = g.glyphMode || 'xbox';
+    const r = Math.max(6, Math.round(this.H / 60));
+    if (sel.stage === 'pick') {
+      for (let i = 0; i < 4; i++) {
+        const p = g.home[i + 1];
+        if (!p || p === g.user) continue;
+        const s = this.project(p.x, p.y, this.headOf(p) + 12);
+        // fora da tela: o ícone fica preso na borda (você ainda sabe quem é quem)
+        const gx = Math.min(this.W - r - 3, Math.max(r + 3, s.x));
+        const gy = Math.min(this.H - r - 3, Math.max(r + 3, s.y));
+        this.drawGlyph(gx, gy + Math.sin(time / 160 + i) * 1.5, i, r, mode);
+      }
+      return;
+    }
+    const p = sel.mate;
+    const s = this.project(p.x, p.y, this.headOf(p) + 10);
+    const rowH = r * 2.6;
+    const w = r * 9;
+    const h = rowH * 4 + r;
+    // sempre dentro da tela
+    const x0 = Math.round(Math.min(this.W - w - 4, Math.max(4, s.x - w / 2)));
+    let y0 = Math.round(Math.min(this.H - h - 4, Math.max(4, s.y - h)));
+    // na faixa do placar (topo), o menu vai para baixo dos pés dele
+    const cv = document.querySelector('#game canvas');
+    const rc = cv ? cv.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+    const hudBottom = ((rc.top + rc.height * 0.13) / window.innerHeight) * this.H;
+    if (y0 < hudBottom) y0 = Math.round(Math.min(this.H - h - 4, this.project(p.x, p.y, 0).y + r));
+    c.globalAlpha = 0.9;
+    c.fillStyle = '#0a1120';
+    c.fillRect(x0, y0, w, h);
+    c.globalAlpha = 1;
+    c.fillStyle = '#ffe14d';
+    c.fillRect(x0, y0, w, 2);
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.font = `800 ${Math.round(r * 1.25)}px "Barlow Condensed", sans-serif`;
+    MATE_ACTIONS.forEach((a, k) => {
+      const yy = y0 + r * 0.5 + rowH * k + rowH / 2;
+      this.drawGlyph(x0 + r * 1.6, yy, k, r * 0.85, mode);
+      c.fillStyle = '#ffffff';
+      c.fillText(a.label, x0 + r * 3.2, yy + 1);
+    });
   }
 
   // Visão de quadra (LB segurado): linhas de passe até cada companheiro e quem nega a linha.

@@ -81,6 +81,74 @@ export function remapButtons64(g) {
   g.vision64Prev = hold;
 }
 
+// ------------------------------------------------------------------ LB + botão: escolher companheiro e ação
+// Segure LB: sobre cada companheiro aparece o botão dele (A=SG, B=SF, X=PF, Y=C).
+// Apertou um -> ele fica selecionado e aparece o menu: A passe · B corta para a cesta ·
+// X abre para o 3 · Y vem bloquear para você. Soltar o LB cancela.
+export const MATE_ACTIONS = [
+  { id: 'pass', label: 'PASSE' },
+  { id: 'cut', label: 'CORTA' },
+  { id: 'spot3', label: 'ABRE NO 3' },
+  { id: 'screen', label: 'BLOQUEIO' },
+];
+const THREE_SPOTS = ['cornerL', 'wingL', 'wingR', 'cornerR'];
+
+export function lbSelect64(g, face) {
+  const u = g.user;
+  const sel = g.sel64;
+  if (!sel) return;
+  if (sel.stage === 'pick') {
+    const mate = g.home[face + 1];
+    if (!mate || mate === u) return;
+    g.sel64 = { stage: 'action', mate };
+    sfx.play('select');
+    return;
+  }
+  const act = MATE_ACTIONS[face];
+  if (act) mateAction(g, sel.mate, act.id);
+  g.sel64 = { stage: 'pick' }; // segue segurando o LB: pode escolher outro
+}
+
+function mateAction(g, p, id) {
+  const u = g.user;
+  if (id === 'pass') {
+    if (g.ball.holder === u && g.ball.state === 'held') {
+      g.iconUsed = true;
+      g.jArmed = false;
+      g.doPass(u, p);
+    }
+    return;
+  }
+  if (!p.motion) return;
+  if (g.play) {
+    g.play.finish();
+    g.play = null;
+  }
+  p.body.pushable = true;
+  const m = p.motion;
+  if (id === 'cut') {
+    Object.assign(m, { action: 'cut', phase: 0, t: 2.4, holdT: undefined, backdoor: true, slot: null, mate: null });
+    g.floatText(p.x, p.y - p.headY - 8, 'CORTA!', 0x6fa0ff);
+  } else if (id === 'spot3') {
+    // o ponto de 3 livre mais perto dele (canto ou ala)
+    const taken = new Set(g.offTeam.filter((o) => o !== p && o.motion).map((o) => o.motion.slot));
+    let best = THREE_SPOTS[0];
+    let bd = Infinity;
+    for (const s of THREE_SPOTS) {
+      if (taken.has(s)) continue;
+      const pt = g.slot(s);
+      const d = Math.hypot(pt.x - p.x, pt.y - p.y);
+      if (d < bd) [bd, best] = [d, s];
+    }
+    Object.assign(m, { action: 'spot', slot: best, phase: 0, t: 4, holdT: undefined, fastT: 1.2, mate: null });
+    g.floatText(p.x, p.y - p.headY - 8, 'ABRE NO 3!', 0x6fa0ff);
+  } else if (id === 'screen') {
+    Object.assign(m, { action: 'ballscreen', phase: 0, t: 3.5, holdT: undefined, mate: null });
+    g.floatText(p.x, p.y - p.headY - 8, 'BLOQUEIO!', 0x6fa0ff);
+  }
+  sfx.play('select');
+}
+
 // ------------------------------------------------------------------ jogo de costas
 export function wantsPost(g) {
   const u = g.user;

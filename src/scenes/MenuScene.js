@@ -75,7 +75,7 @@ export default class MenuScene extends Phaser.Scene {
   // ------------------------------------------------------------ pausa
   buildPause() {
     const x = VIEW.W / 2 - 100;
-    drawPanel(this.g, x, 50, 200, this.gs.camModes ? 174 : 160, 0xffe14d); // (64: dois itens a mais)
+    drawPanel(this.g, x, 50, 200, this.gs.camModes ? 186 : 160, 0xffe14d); // (64: três itens a mais)
     new PixelText(this, VIEW.W / 2, 62, 'PAUSADO', { scale: 2, origin: [0.5, 0], color: 0xffe14d });
     const sc = this.gs.score;
     new PixelText(this, VIEW.W / 2, 84, `${this.gs.homeTeam.name} ${sc.home} X ${sc.away} ${this.gs.awayTeam.name}`, { origin: [0.5, 0], color: 0xb8b0d0 });
@@ -84,6 +84,9 @@ export default class MenuScene extends Phaser.Scene {
     const camLabel = () => `CAMERA: ${cams.find((c) => c.id === this.gs.camMode).name}`;
     // medidor: BARRA (sobre a cabeça) ou PULO (sem barra: solte no topo do pulo)
     const meterLabel = () => `MEDIDOR: ${this.gs.meterMode === 'pulo' ? 'PULO (SEM BARRA)' : 'BARRA'}`;
+    // ícones dos botões sobre os jogadores: Xbox, PlayStation ou teclado
+    const GLYPH_NAMES = { xbox: 'XBOX', ps: 'PLAYSTATION', teclado: 'TECLADO' };
+    const glyphLabel = () => `BOTOES: ${GLYPH_NAMES[this.gs.glyphMode] || 'XBOX'}`;
     const items = [
       { id: 'resume', label: 'CONTINUAR' },
       { id: 'book', label: 'PLAYBOOK' },
@@ -91,11 +94,12 @@ export default class MenuScene extends Phaser.Scene {
       { id: 'timeout', label: `TEMPO TECNICO (${this.gs.timeouts})` },
       ...(cams ? [{ id: 'camera', label: camLabel(), color: 0x3ad6ff }] : []),
       ...(cams ? [{ id: 'meter', label: meterLabel(), color: 0x3ad6ff }] : []),
+      ...(cams ? [{ id: 'glyphs', label: glyphLabel(), color: 0x3ad6ff }] : []),
       { id: 'controls', label: 'CONTROLES' },
       { id: 'restart', label: 'REINICIAR PARTIDA' },
       { id: 'quit', label: 'SAIR PARA O TITULO', color: 0xff7b6b },
     ];
-    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 12.5 : 14 });
+    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 12 : 14 });
     this.onNav = (d) => {
       m.set(m.index + d);
       sfx.play('select');
@@ -115,6 +119,11 @@ export default class MenuScene extends Phaser.Scene {
           const i = cams.findIndex((c) => c.id === this.gs.camMode);
           this.gs.setCamMode(cams[(i + 1) % cams.length].id);
           return m.label(m.index, camLabel());
+        }
+        case 'glyphs': {
+          const order = ['xbox', 'ps', 'teclado'];
+          this.gs.setGlyphMode(order[(order.indexOf(this.gs.glyphMode) + 1) % order.length]);
+          return m.label(m.index, glyphLabel());
         }
         case 'meter':
           this.gs.setMeterMode(this.gs.meterMode === 'pulo' ? 'barra' : 'pulo');

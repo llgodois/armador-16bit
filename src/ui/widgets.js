@@ -179,6 +179,8 @@ export function drawControls(scene, g, x, y, w, depth = 10, pad = false) {
   const ROWS64 = {
     'LT / L2': 'proteger / de costas',
     'LB segure': 'visao (com bola)/bloqueia',
+    'RB+botao': '(no 64: use LB + botao)',
+    'LB+botao': 'colega > A passe B corta X 3 Y bloq',
     Q: 'proteger / de costas',
     C: 'toque bloqueio/segure visao',
   };

@@ -102,6 +102,20 @@ game.events.once('ready', () => {
       /* ignore */
     }
   };
+  // ícones dos botões (LB + botão, menus): Xbox, PlayStation ou teclado
+  try {
+    gs.glyphMode = ['xbox', 'ps', 'teclado'].includes(localStorage.getItem('glyphs3d')) ? localStorage.getItem('glyphs3d') : 'xbox';
+  } catch {
+    gs.glyphMode = 'xbox';
+  }
+  gs.setGlyphMode = (m) => {
+    gs.glyphMode = m;
+    try {
+      localStorage.setItem('glyphs3d', m);
+    } catch {
+      /* ignore */
+    }
+  };
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyV' || !game.scene.isActive('Game')) return;
     const i = CAM_MODES.findIndex((c) => c.id === gs.camMode);

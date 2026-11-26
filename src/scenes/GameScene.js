@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -872,14 +872,16 @@ export default class GameScene extends Phaser.Scene {
     const hit = (i) => now[i] && !prevRaw[i];
     if (pad && (Object.values(now).some(Boolean) || Math.hypot(pad.axes[0] || 0, pad.axes[1] || 0) > 0.4)) this.lastInputPad = true;
     this.prevRaw = now;
-    const modIcon = now[P.ICON];
-    // (só no 64) LB segurado com a bola = visão de quadra: aí o LB deixa de ser o "comando + botão"
-    // e os botões fazem a ação normal (dá para passar com A durante a visão)
+    // (no 64 o RB não é mais o passe por ícone: isso virou LB + botão + A)
+    const modIcon = now[P.ICON] && !this.v64;
+    // (só no 64) LB segurado com a bola e sem escolher colega = visão de quadra
     const u64 = this.user;
     const lbVision64 = !!(this.v64 && u64 && !this.userOnDefense && this.ball && this.ball.holder === u64 && this.ball.state === 'held' &&
       now[P.SCREEN] && this.lbAt && this.time.now - this.lbAt > 180 && !this.lbUsed);
     this.lbVision64 = lbVision64;
-    const modCmd = now[P.E] && !lbVision64;
+    const modCmd = now[P.E];
+    // (só no 64) LB segurado no ataque: menu de companheiros (LB + A/B/X/Y escolhe, depois a ação)
+    if (this.v64) this.sel64 = modCmd && !this.userOnDefense ? this.sel64 || { stage: 'pick' } : null;
     this.padMod = modIcon ? 'icon' : modCmd ? 'cmd' : null;
     this.padNum = null;
     this.padPlay = null;
@@ -1515,7 +1517,11 @@ export default class GameScene extends Phaser.Scene {
         this.iconUsed = true;
         this.jArmed = false;
         this.doPass(u, this.home[i + 1]);
-      } else if (eHeld && i < 4) this.commandMate(this.home[i + 1]);
+      } else if (eHeld && i < 4) {
+        // (64, controle) LB + botão: escolhe o colega e depois a ação; teclado (E + número) segue igual
+        if (this.v64 && this.sel64 && this.padNum === i) lbSelect64(this, i);
+        else this.commandMate(this.home[i + 1]);
+      }
       else if (!jHeld && !eHeld && i < GAME.quickPlays) this.callPlay(this.pageIndex(i));
     });
 
