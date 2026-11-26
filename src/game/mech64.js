@@ -850,6 +850,8 @@ function startTakeover(g, tk) {
   tk.orig = u.skills;
   const s = u.skills;
   u.skills = { ...s, three: s.three * 1.1, mid: s.mid * 1.1, finishing: s.finishing * 1.1, crossAnkle: s.crossAnkle * 1.4, perfectWindow: s.perfectWindow * 1.35, speed: s.speed * 1.05 };
+  tk.baseSpeed = u.baseSpeed;
+  if (u.baseSpeed) u.baseSpeed *= 1.05; // (a velocidade fica guardada no jogador)
   g.floatText(u.x, u.y - u.headY - 24, 'TAKEOVER!', 0xff8a2a);
   g.events.emit('toast', 'TAKEOVER! 20 segundos de fogo', 0xff8a2a);
   sfx.play('cheer');
@@ -860,6 +862,8 @@ function endTakeover(g, tk) {
   tk.active = 0;
   tk.meter = 0;
   if (tk.orig) g.pg.skills = tk.orig;
+  if (tk.baseSpeed) g.pg.baseSpeed = tk.baseSpeed;
+  tk.baseSpeed = null;
   tk.orig = null;
 }
 

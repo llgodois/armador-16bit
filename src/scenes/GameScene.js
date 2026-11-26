@@ -2268,8 +2268,7 @@ export default class GameScene extends Phaser.Scene {
       u.moveDir(bx / bl, by / bl, u.speed * 1.6, dt * 3);
     } else if (u.slideT > 0) u.moveDir(u.slideDir.x, u.slideDir.y, u.speed * USER_DEFENSE.slideMult, dt * 3);
     else if (moving) u.moveDir(ix, iy, speed, dt);
-    else if (u.denyTarget) u.seek(u.denyTarget, speed, dt); // (64) negando a linha de passe
-    else u.moveDir(0, 0, 0, dt);
+    else u.moveDir(0, 0, 0, dt); // (64: negar a linha com LT é só postura; quem anda é você)
 
     // K na defesa: o jogo decide pela situação
     //  - passe passando perto -> interceptação

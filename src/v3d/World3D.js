@@ -279,12 +279,16 @@ export default class World3D {
       // Voltando para a defesa (rápido e longe da bola): o jogo manda olhar para a bola, o que vira
       // uma corrida de costas esquisita. Como no 2K, ele vira e corre de frente; perto, volta a encarar.
       const ballD = Math.hypot(g.ball.x - x, g.ball.y - y);
-      const backRun = !replay && g.offSide && p.team !== g.offSide && spd > 60 && ballD > 70; // voltando em velocidade
-      if (backRun) {
-        const away = fx * vx + fz * (vy / PLAYER.verticalFactor) < 0; // estaria correndo de costas
-        if (away || ballD > 110) {
+      // (de costas OU de lado em velocidade: o passo lateral rápido parecia "pés parados")
+      let backRun = false;
+      if (!replay && g.offSide && p.team !== g.offSide && spd > 55 && ballD > 45) {
+        const vz0 = vy / PLAYER.verticalFactor;
+        const fl = Math.hypot(fx, fz) || 1;
+        const ahead = (fx * vx + fz * vz0) / (fl * (Math.hypot(vx, vz0) || 1)); // 1 = correndo de frente
+        if (ahead < 0.6 || ballD > 110) {
+          backRun = true;
           fx = vx;
-          fz = vy / PLAYER.verticalFactor;
+          fz = vz0;
         }
       }
 
