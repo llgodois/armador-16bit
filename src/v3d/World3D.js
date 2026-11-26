@@ -108,6 +108,9 @@ export default class World3D {
     this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark, home: game.street ? null : game.homeTeam });
     this.camId = null; // ginásio novo: reaplica a câmera (arquibancada escondida etc.)
     this.camPos = this.camera.position.clone(); // a câmera de entrada/replay parte daqui (nunca indefinida)
+    this.cinemaBlend = 0;
+    this.blend = null;
+    this.introShot = null;
 
     // bola
     const ballMat = new THREE.MeshLambertMaterial({ map: ballTexture(), flatShading: true });
@@ -526,17 +529,21 @@ export default class World3D {
   introCamera(g, dt) {
     const T = 7.6 - g.stateT;
     const cz = toZ(MID_Y);
-    const k = dt > 0 ? 1 - Math.exp(-8 * dt) : 1;
     let pos;
     let look;
+    let shot;
+    let shotStart;
     this.introCard = null;
     if (T < 2.6) {
       const a = -1.1 + T * 0.6;
       pos = new THREE.Vector3(240 + Math.sin(a) * 470, 230 - T * 30, cz + Math.cos(a) * 470);
       look = new THREE.Vector3(240, 30, cz);
-      if (!this.camPos || T < 0.1) this.camPos = pos.clone();
+      shot = -1;
+      shotStart = 0;
     } else {
       const i = Math.min(4, Math.floor((T - 2.6) / 0.9));
+      shot = i;
+      shotStart = 2.6 + i * 0.9;
       const p = g.home[i] || g.home[0];
       const m = this.models.get(p);
       if (!m) return; // (ainda sem boneco: fica no plano anterior)
@@ -548,9 +555,19 @@ export default class World3D {
       look = P.clone().add(new THREE.Vector3(0, m.heightUnits * 0.62, 0));
       this.introCard = { name: p.info.name, role: p.role, cm: p.info.cm, nick: p.info.nick, color: g.homeTeam.colors.jersey };
     }
-    this.camPos.lerp(pos, T < 2.6 ? 1 : k);
-    this.look.lerp(look, T < 2.6 ? 1 : k);
+    // troca de plano: movimento com início e fim suaves e duração fixa (sem arrancada brusca)
+    if (this.introShot !== shot) {
+      this.introShot = shot;
+      this.shotFrom = { pos: (shot === -1 ? pos : this.camPos).clone(), look: (shot === -1 ? look : this.look).clone() };
+    }
+    const dur = shot === 0 ? 0.6 : 0.4; // do voo para o 1º jogador, um pouco mais longo
+    const u = Math.min(1, (T - shotStart) / dur);
+    const e = u * u * (3 - 2 * u); // suave no começo e no fim
+    this.camPos.copy(this.shotFrom.pos).lerp(pos, e);
+    this.look.copy(this.shotFrom.look).lerp(look, e);
     this.camera.position.copy(this.camPos);
+    this.cinemaBlend = 1; // ao voltar ao jogo, a câmera desliza daqui
+    this.cinemaLook = this.look.clone();
     this.camera.lookAt(this.look);
     this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
     this.sun.target.position.copy(this.look);
@@ -578,6 +595,8 @@ export default class World3D {
     this.camPos.lerp(pos, k);
     this.look.lerp(new THREE.Vector3(b.x, Math.max(14, b.y * 0.8), b.z), k);
     this.camera.position.copy(this.camPos);
+    this.cinemaBlend = 1; // ao voltar ao jogo, a câmera desliza daqui
+    this.cinemaLook = this.look.clone();
     this.camera.lookAt(this.look);
     this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
     this.sun.target.position.copy(this.look);
@@ -604,7 +623,22 @@ export default class World3D {
     this.look.lerp(want, k);
     if (lateral) this.camera.position.set(this.look.x - cam.back, this.look.y + cam.up, this.look.z);
     else this.camera.position.set(this.look.x, this.look.y + cam.up, this.look.z + cam.back);
-    this.camera.lookAt(this.look);
+    // saindo da entrada/replay: desliza da câmera de cinema até a de jogo (sem corte seco)
+    // (duração fixa de 0,9 s, começo e fim suaves — posição e ponto de mira)
+    if (this.cinemaBlend > 0) {
+      this.cinemaBlend = 0;
+      this.blend = { from: this.camPos.clone(), lookFrom: this.cinemaLook ? this.cinemaLook.clone() : this.look.clone(), t: 0 };
+    }
+    let lookAt = this.look;
+    if (this.blend) {
+      this.blend.t += dt;
+      const u = Math.min(1, this.blend.t / 0.9);
+      const e = u * u * (3 - 2 * u);
+      this.camera.position.copy(this.blend.from.clone().lerp(this.camera.position, e));
+      lookAt = this.blend.lookFrom.clone().lerp(this.look, e);
+      if (u >= 1) this.blend = null;
+    }
+    this.camera.lookAt(lookAt);
     // sombra acompanha o centro da cena (mapa de sombra mais nítido)
     this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
     this.sun.target.position.copy(this.look);
