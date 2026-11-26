@@ -803,14 +803,34 @@ export default class World3D {
     const tk = g.tk64;
     if (tk && u && u === g.pg && tk.meter > 0.02 && live && g.state !== 'replay') {
       const s = this.project(u.x, u.y, -2);
-      const W = 26;
+      const W = 40;
       const x = Math.round(s.x - W / 2);
       const y = Math.round(s.y + 8);
       const full = tk.meter >= 1 || tk.active > 0;
       c.fillStyle = '#10101a';
-      c.fillRect(x - 1, y - 1, W + 2, 5);
+      c.fillRect(x - 1, y - 1, W + 2, 6);
       c.fillStyle = full ? (Math.floor(time / 150) % 2 ? '#ff8a2a' : '#ffd04d') : '#ff8a2a';
-      c.fillRect(x, y, Math.round(W * Math.min(1, tk.meter)), 3);
+      c.fillRect(x, y, Math.round(W * Math.min(1, tk.meter)), 4);
+      // cheia e ainda não ativada: lembrete fixo do botão até você usar
+      if (tk.meter >= 1 && !(tk.active > 0)) {
+        // fixo no canto, acima da barra de gás (embaixo do jogador o rodapé cobria)
+        c.font = '800 17px "Barlow Condensed", sans-serif';
+        const lbl = g.glyphMode === 'teclado' ? 'TAKEOVER PRONTO: T' : 'TAKEOVER PRONTO: L3 + R3';
+        const tw = c.measureText(lbl).width + 18;
+        const px = Math.round(this.W * 0.01);
+        const py = Math.round(this.H * 0.745);
+        c.globalAlpha = 0.85;
+        c.fillStyle = '#10101a';
+        c.fillRect(px, py, tw, 24);
+        c.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(time / 220));
+        c.fillStyle = '#ff8a2a';
+        c.fillRect(px, py + 22, tw, 2);
+        c.textAlign = 'left';
+        c.fillStyle = '#ffb24d';
+        c.fillText(lbl, px + 9, py + 12);
+        c.textAlign = 'center';
+        c.globalAlpha = 1;
+      }
     }
 
     // textos flutuantes

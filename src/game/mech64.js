@@ -800,7 +800,10 @@ export function takeoverTick(g) {
     if (g.ankles64 > (tk.ankles || 0)) tk.meter = Math.min(1, tk.meter + TK_GAIN.ankle);
     if (tk.meter >= 1 && !tk.readyShown) {
       tk.readyShown = true;
-      g.events.emit('toast', 'TAKEOVER PRONTO: L3 + R3 (teclado: T)', 0xff8a2a);
+      // faixa no meio da tela (o toast do topo era coberto pelas dicas do técnico)
+      g.events.emit('banner', 'TAKEOVER PRONTO', 'aperte L3 + R3 juntos (teclado: T)', 0xff8a2a, 2.2);
+      sfx.play('life');
+      rumble(g, 0.4, 0.4, 200);
     }
   }
   tk.ankles = g.ankles64 || 0;
@@ -853,7 +856,7 @@ function startTakeover(g, tk) {
   tk.baseSpeed = u.baseSpeed;
   if (u.baseSpeed) u.baseSpeed *= 1.05; // (a velocidade fica guardada no jogador)
   g.floatText(u.x, u.y - u.headY - 24, 'TAKEOVER!', 0xff8a2a);
-  g.events.emit('toast', 'TAKEOVER! 20 segundos de fogo', 0xff8a2a);
+  g.events.emit('banner', 'TAKEOVER!', '20 segundos de fogo', 0xff8a2a, 1.4);
   sfx.play('cheer');
   rumble(g, 0.9, 0.6, 400);
 }
