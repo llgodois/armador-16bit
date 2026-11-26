@@ -100,6 +100,8 @@ export default class GameScene extends Phaser.Scene {
     this.survival = !!setup.survival;
     this.lives = 3;
     this.survStreak = 0; // (só no 64) sequência do estilo do armador que devolve vida
+    this.survBonus = 0; // (só no 64) pontos de ranking do desafio de estilo
+    this.styleChallenge = false;
     this.possAssist = false;
     this.survPoss = 0;
     this.survOk = 0;
@@ -1312,7 +1314,7 @@ export default class GameScene extends Phaser.Scene {
   // ------------------------------------------------------------------ COMPETITIVO: sobrevivência
   // Quando a bola vai para o adversário, a posse acabou: pontuou = segue; não pontuou = perde 1 vida.
   updateSurvival() {
-    const score = this.stats.fgm + this.stats.ast;
+    const score = this.stats.fgm + this.stats.ast + (this.survBonus || 0); // (bônus: só existe no 64)
     this.events.emit('contestHud', `VIDAS ${'O'.repeat(Math.max(0, this.lives))}${'-'.repeat(Math.max(0, 3 - this.lives))}   PONTOS ${score}   POSSE ${this.survPoss + 1}`);
     if (this.offSide !== 'away' || this.state !== 'live') return;
     this.survPoss++;
@@ -1340,6 +1342,13 @@ export default class GameScene extends Phaser.Scene {
   //   chutador: cestas de 3 · passador: assistências · infiltrador: bandejas/enterradas
   survStreakHit(kind) {
     if (!this.v64 || !this.survival || !kind || !this.build || kind !== this.build.id) return;
+    // desafio de estilo (a cada 10 posses): fez a jogada do seu estilo nesta posse = +3 no ranking
+    if (this.styleChallenge) {
+      this.styleChallenge = false;
+      this.survBonus = (this.survBonus || 0) + 3;
+      sfx.play('green');
+      this.events.emit('toast', 'DESAFIO CUMPRIDO! +3 NO RANKING', 0x3ad6ff);
+    }
     this.survStreak = (this.survStreak || 0) + 1;
     if (this.survStreak < 3) {
       this.events.emit('toast', `SEQUENCIA ${this.survStreak}/3`, 0x6dff6d);
@@ -1382,13 +1391,23 @@ export default class GameScene extends Phaser.Scene {
     this.state = 'intro';
     this.stateT = 0.9;
     this.events.emit('banner', `POSSE ${this.survPoss + 1}`, `VIDAS: ${this.lives}`, this.lives > 1 ? 0xffe14d : 0xff7b6b, 0.9);
+    if (this.v64) this.startStyleChallenge();
+  }
+
+  // (só no 64) a cada 10 posses vencidas, a seguinte é um DESAFIO DE ESTILO
+  startStyleChallenge() {
+    this.styleChallenge = false;
+    if (!this.survPoss || this.survPoss % 10 !== 0 || !this.build) return;
+    this.styleChallenge = true;
+    const what = { chutador: 'CESTA DE 3', passador: 'ASSISTENCIA', infiltrador: 'BANDEJA OU ENTERRADA' }[this.build.id] || 'CESTA';
+    this.events.emit('banner', 'DESAFIO DE ESTILO', `${what} NESTA POSSE: +3 NO RANKING`, 0x3ad6ff, 1.8);
   }
 
   endSurvival() {
     if (this.state === 'done') return;
     this.state = 'done';
     const st = this.stats;
-    const result = { score: st.fgm + st.ast, fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name, team: this.homeTeam.era ? null : this.homeTeam.id, teamName: this.homeTeam.name };
+    const result = { score: st.fgm + st.ast + (this.survBonus || 0), fgm: st.fgm, ast: st.ast, tpm: st.tpm, pts: st.pts, poss: this.survPoss, pg: this.pg.info.name, team: this.homeTeam.era ? null : this.homeTeam.id, teamName: this.homeTeam.name };
     this.events.emit('banner', 'FIM!', `${result.score} PONTOS`, 0xffe14d, 1.4);
     sfx.play('buzzer');
     this.time.delayedCall(1500, () => {

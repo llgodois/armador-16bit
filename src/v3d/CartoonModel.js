@@ -2,6 +2,7 @@
 // rosto simples, sombra em faixas (toon) e contorno preto ("casca invertida").
 // Os parâmetros de cada estilo ficam em STYLES; a página stylelab.html compara.
 import * as THREE from 'three';
+import { lookOf } from './looks.js';
 
 const SKINS = ['#f1c27d', '#8d5524', '#c68642', '#e0ac69', '#5c3a1e', '#a86b3c'];
 const HAIRS = ['#3b2414', '#111111', '#1a1a1a', '#6b3e1f', '#0d0d0d', '#c9a26b'];
@@ -62,9 +63,12 @@ function outlineMat(t) {
 
 export default class CartoonModel {
   constructor(info, colors, index, style = STYLES.arcade) {
-    const S = style;
-    const skin = SKINS[(info.skin ?? index * 3 + 1) % SKINS.length];
-    const hair = HAIRS[(info.hair ?? index + 2) % HAIRS.length];
+    // jogador real com visual conhecido (src/v3d/looks.js): pele, cabelo, barba, faixa e porte
+    const real = lookOf(info.name);
+    // porte forte: tronco e braços mais largos
+    const S = real && real.bulk ? { ...style, shoulder: style.shoulder * 1.1, waist: style.waist * 1.18, limb: style.limb * 1.1 } : style;
+    const skin = real ? real.skin : SKINS[(info.skin ?? index * 3 + 1) % SKINS.length];
+    const hair = real ? real.hairColor : HAIRS[(info.hair ?? index + 2) % HAIRS.length];
     const jersey = colors.jersey;
     const trim = colors.trim || '#ffffff';
     const shorts = colors.shorts || jersey;
@@ -73,9 +77,11 @@ export default class CartoonModel {
     const outline = S.outline;
     // visual de cada jogador, sorteado pelo NOME (sempre o mesmo para ele)
     const h = hashStr(info.name || `j${index}`);
+    const HAIR_ID = { short: 0, flat: 1, bald: 3, afro: 4, braids: 5, buzz: 6, dreads: 7, long: 8, bun: 9, curly: 10 };
     const look = {
-      hair: info.name ? h % 6 : index % 3,
-      beard: !!info.name && (h >> 3) % 5 < 2,
+      hair: real ? HAIR_ID[real.hairStyle] ?? 0 : info.name ? h % 6 : index % 3,
+      beard: real ? real.beard : !!info.name && (h >> 3) % 5 < 2 ? 1 : 0,
+      headband: real ? real.headband : false,
       band: info.name ? (h >> 5) % 3 : 0, // 0 nenhuma · 1 cor do time · 2 branca
       sleeve: !!info.name && (h >> 7) % 10 < 3,
       num: [3, 1, 23, 7, 21, 0, 11, 30, 34, 13, 77, 6][((h >> 9) + index) % 12],
@@ -182,11 +188,48 @@ export default class CartoonModel {
       case 4:
         add(this.head, new THREE.SphereGeometry(hr * 1.3, 12, 9), hair, 0, hr * 1.35 + 0.6, -0.35); // black power
         break;
+      case 6:
+        cap(0.3, hr + 0.62); // raspado (bem rente)
+        break;
+      case 7:
+        // dreads: touca + mechas caindo atrás e dos lados
+        cap(0.4);
+        for (let k = 0; k < 9; k++) {
+          const a = Math.PI * (0.25 + (k / 8) * 1.5);
+          const len = hr * (0.9 + (k % 3) * 0.2);
+          add(this.head, new THREE.CylinderGeometry(0.32, 0.28, len, 5), hair, Math.cos(a) * hr * 0.92, hr * 1.25 + 0.6 - len / 2, -Math.abs(Math.sin(a)) * hr * 0.55 - 0.2);
+        }
+        break;
+      case 8:
+        // longo: touca + cabelo descendo até o pescoço (atrás e dos lados)
+        cap(0.45);
+        add(this.head, new THREE.BoxGeometry(hr * 1.9, hr * 1.4, hr * 0.5), hair, 0, hr * 0.95 + 0.6, -hr * 0.72);
+        for (const sd of [-1, 1]) add(this.head, new THREE.BoxGeometry(hr * 0.3, hr * 1.1, hr * 1.2), hair, sd * hr * 0.95, hr * 1.05 + 0.6, -hr * 0.2);
+        break;
+      case 9:
+        cap(0.4); // coque
+        add(this.head, new THREE.SphereGeometry(hr * 0.42, 8, 6), hair, 0, hr * 1.85 + 0.6, -hr * 0.55);
+        break;
+      case 10:
+        // cacheado / twists: touca + bolinhas por cima
+        cap(0.44);
+        for (let k = 0; k < 10; k++) {
+          const a = (k / 10) * Math.PI * 2;
+          add(this.head, new THREE.SphereGeometry(hr * 0.26, 6, 5), hair, Math.cos(a) * hr * 0.6, hr * 1.82 + 0.6 + (k % 2) * 0.25, Math.sin(a) * hr * 0.55 - 0.2);
+        }
+        break;
       default:
         cap(0.36);
         for (let k = -2; k <= 2; k++) add(this.head, new THREE.BoxGeometry(0.35, 0.4, hr * 1.8), hair, k * hr * 0.3, hr * 1.95 + 0.6 - Math.abs(k) * 0.25, -0.2); // trancinhas
     }
-    if (look.beard) add(this.head, new THREE.BoxGeometry(hr * 1.15, hr * 0.5, hr * 0.5), hair, 0, hr * 0.42 + 0.6, hr * 0.62);
+    // faixa na cabeça (ex.: LeBron, Iverson)
+    if (look.headband) add(this.head, new THREE.TorusGeometry(hr * 0.99, 0.4, 5, 14).rotateX(Math.PI / 2), '#f4f4f4', 0, hr * 1.3 + 0.6, 0);
+    // barba: 1 = curta (cavanhaque), 2 = cheia (cobre o queixo e sobe pelos lados)
+    if (look.beard === 1) add(this.head, new THREE.BoxGeometry(hr * 0.9, hr * 0.38, hr * 0.45), hair, 0, hr * 0.42 + 0.6, hr * 0.66);
+    else if (look.beard >= 2) {
+      add(this.head, new THREE.BoxGeometry(hr * 1.4, hr * 0.7, hr * 0.7), hair, 0, hr * 0.5 + 0.6, hr * 0.5);
+      for (const sd of [-1, 1]) add(this.head, new THREE.BoxGeometry(hr * 0.25, hr * 0.8, hr * 0.7), hair, sd * hr * 0.82, hr * 0.85 + 0.6, hr * 0.15);
+    }
 
     // braços: ombro + cotovelo + mão
     this.arms = [-1, 1].map((s) => {

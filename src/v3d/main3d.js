@@ -36,6 +36,13 @@ import { installSelect64 } from './select64.js';
 enableModernTheme();
 installPortraits(); // telas de menu: retratos 3D no lugar dos bonecos pixelados
 installSelect64(SelectScene); // "Monte seu jogo" redesenhado (só no 64)
+// placar da Sobrevivência: o RANKING inclui o bônus do desafio de estilo (só existe no 64)
+const hudUpdate = HUDScene.prototype.update;
+HUDScene.prototype.update = function (...args) {
+  hudUpdate.apply(this, args);
+  const g = this.gs;
+  if (g && g.survival && g.survBonus) this.foulText.setText(`RANKING ${g.stats.fgm + g.stats.ast + g.survBonus}`);
+};
 fontsReady().then(start);
 
 function start() {
