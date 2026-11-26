@@ -87,6 +87,15 @@ export default class MenuScene extends Phaser.Scene {
     // ícones dos botões sobre os jogadores: Xbox, PlayStation ou teclado
     const GLYPH_NAMES = { xbox: 'XBOX', ps: 'PLAYSTATION', teclado: 'TECLADO' };
     const glyphLabel = () => `BOTOES: ${GLYPH_NAMES[this.gs.glyphMode] || 'XBOX'}`;
+    // vibração do controle (só no 64)
+    const rumbleOn = () => {
+      try {
+        return localStorage.getItem('rumble3d') !== 'off';
+      } catch (e) {
+        return true;
+      }
+    };
+    const rumbleLabel = () => `VIBRACAO: ${rumbleOn() ? 'LIGADA' : 'DESLIGADA'}`;
     const items = [
       { id: 'resume', label: 'CONTINUAR' },
       { id: 'book', label: 'PLAYBOOK' },
@@ -95,11 +104,12 @@ export default class MenuScene extends Phaser.Scene {
       ...(cams ? [{ id: 'camera', label: camLabel(), color: 0x3ad6ff }] : []),
       ...(cams ? [{ id: 'meter', label: meterLabel(), color: 0x3ad6ff }] : []),
       ...(cams ? [{ id: 'glyphs', label: glyphLabel(), color: 0x3ad6ff }] : []),
+      ...(cams ? [{ id: 'rumble', label: rumbleLabel(), color: 0x3ad6ff }] : []),
       { id: 'controls', label: 'CONTROLES' },
       { id: 'restart', label: 'REINICIAR PARTIDA' },
       { id: 'quit', label: 'SAIR PARA O TITULO', color: 0xff7b6b },
     ];
-    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 12 : 14 });
+    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 11 : 14 });
     this.onNav = (d) => {
       m.set(m.index + d);
       sfx.play('select');
@@ -125,6 +135,13 @@ export default class MenuScene extends Phaser.Scene {
           this.gs.setGlyphMode(order[(order.indexOf(this.gs.glyphMode) + 1) % order.length]);
           return m.label(m.index, glyphLabel());
         }
+        case 'rumble':
+          try {
+            localStorage.setItem('rumble3d', rumbleOn() ? 'off' : 'on');
+          } catch (e) {
+            /* sem storage */
+          }
+          return m.label(m.index, rumbleLabel());
         case 'meter':
           this.gs.setMeterMode(this.gs.meterMode === 'pulo' ? 'barra' : 'pulo');
           return m.label(m.index, meterLabel());

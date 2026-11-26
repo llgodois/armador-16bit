@@ -150,43 +150,100 @@ export const CONTROLS_PAD = [
   },
 ];
 
+// Controle no 64 (versão 3D): esquema mais perto do 2K
+const CONTROLS_PAD64 = [
+  {
+    title: 'ATAQUE',
+    color: 0x6dff6d,
+    col: 0,
+    rows: [
+      ['Analog. E', 'mover (RT: sprint)'],
+      ['A / X', 'passe (segure: mira)'],
+      ['A + B  A + Y', 'quicado / vistoso'],
+      ['A sem bola', 'pede / tabela (devolve)'],
+      ['Y / Trian', 'ponte aerea / passe alto'],
+      ['X / Quad', 'arremesso (toque: finta)'],
+      ['B / Bola', 'cross / hesita / size-up'],
+      ['Analog. D', 'dribles · baixo: arremesso'],
+      ['RT + Analog. D', 'atras das costas / snatch'],
+      ['Analog. D aro', 'flutuante/euro/hop/giro'],
+      ['RT + X aro', 'enterrada (girando: 360)'],
+      ['RB', 'chama bloqueio'],
+      ['RB + A X Y', 'rola / abre / slip'],
+      ['RB segure', 'voce bloqueia (sem bola)'],
+      ['LB segure', 'visao de quadra'],
+      ['LB + botao', 'colega: A passe B corta X 3 Y bloq'],
+      ['LT / L2', 'proteger / de costas (perto)'],
+      ['L3 + R3', 'takeover (barra cheia)'],
+    ],
+  },
+  {
+    title: 'DEFESA',
+    color: 0xff9a4d,
+    col: 1,
+    rows: [
+      ['X / Quad', 'roubar (no tempo certo)'],
+      ['Y / Trian', 'pular / toco'],
+      ['Analog. D cima', 'mao alta (sem falta)'],
+      ['LT / L2', 'defesa intensa / negar'],
+      ['B segure', 'plantado (cavar falta)'],
+      ['LB toque', 'pedir troca'],
+      ['LB + botao', 'esse colega dobra'],
+      ['Direcional', 'esquema defensivo'],
+    ],
+  },
+  {
+    title: 'GERAL',
+    color: 0x6fa0ff,
+    col: 1,
+    rows: [
+      ['START', 'pausa'],
+      ['VIEW/SEL.', 'playbook'],
+      ['Direcional', 'jogadas (R3: pagina)'],
+      ['L3', 'replay da jogada'],
+    ],
+  },
+  {
+    title: 'MENUS',
+    color: 0xffe14d,
+    col: 1,
+    rows: [
+      ['A  /  B', 'confirma / volta'],
+      ['LB / RB', 'pagina'],
+    ],
+  },
+];
+
 // Desenha os blocos de controles em duas colunas dentro de uma área.
 export function drawControls(scene, g, x, y, w, depth = 10, pad = false) {
   const colW = Math.floor(w / 2);
   const cy = [y, y];
   // versão 3D: comandos que só existem no 64
-  const extra = !THEME.modern
+  const extra = !THEME.modern || pad
     ? []
     : [
         {
           title: 'SO NO 64',
           color: 0x3ad6ff,
           col: 1,
-          rows: pad
-            ? [
-                ['Analog. D', 'cross/hesita/giro/jab'],
-                ['Analog. D baixo', 'arremesso (segure)'],
-                ['Analog. D diag.', 'step-back'],
-                ['RT + X no aro', 'enterrada'],
-              ]
-            : [
-                ['SHIFT + K aro', 'enterrada'],
-                ['V', 'trocar camera'],
-              ],
+          rows: [
+            ['SHIFT + K aro', 'enterrada'],
+            ['J sem bola', 'tabela (logo apos passar)'],
+            ['T', 'takeover (barra cheia)'],
+            ['V', 'trocar camera'],
+          ],
         },
       ];
-  // no 64 o LT/Q protege a bola e o LB/C segurado é a visão de quadra
+  // no 64 o Q protege a bola e o C segurado é a visão de quadra
   const ROWS64 = {
-    'LT / L2': 'proteger / de costas',
-    'LB segure': 'visao (com bola)/bloqueia',
-    'RB+botao': '(no 64: use LB + botao)',
-    'LB+botao': 'colega > A passe B corta X 3 Y bloq',
     Q: 'proteger / de costas',
     C: 'toque bloqueio/segure visao',
   };
-  const base = (pad ? CONTROLS_PAD : CONTROLS).map((sec) =>
-    THEME.modern && sec.title === 'ATAQUE' ? { ...sec, rows: sec.rows.map(([k, v]) => [k, ROWS64[k] || v]) } : sec,
-  );
+  const base = THEME.modern && pad
+    ? CONTROLS_PAD64
+    : (pad ? CONTROLS_PAD : CONTROLS).map((sec) =>
+        THEME.modern && sec.title === 'ATAQUE' ? { ...sec, rows: sec.rows.map(([k, v]) => [k, ROWS64[k] || v]) } : sec,
+      );
   for (const sec of [...base, ...extra]) {
     const cx = x + sec.col * colW;
     let yy = cy[sec.col];

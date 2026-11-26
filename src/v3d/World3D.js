@@ -545,6 +545,10 @@ export default class World3D {
     if (u) {
       r.position.set(u.x, 0.3, toZ(u.y));
       r.material.color.setHex(tintOf(g.ring));
+      // (64) takeover ativo: anel laranja pulsando
+      const fire = g.tk64 && g.tk64.active > 0 && u === g.pg;
+      if (fire) r.material.color.setHex(Math.floor(time / 120) % 2 ? 0xff8a2a : 0xffd04d);
+      r.scale.setScalar(fire ? 1.15 + 0.1 * Math.sin(time / 90) : 1);
     }
     const rm = g.runMarker;
     this.runRing.visible = !!(rm && rm.visible && live);
@@ -789,6 +793,20 @@ export default class World3D {
       const over = v > SHOT.sweetSpot + win;
       c.fillStyle = v > 1 ? (Math.floor(time / 60) % 2 ? '#ff5a4d' : '#ffffff') : over ? '#ff9a4d' : '#ffe14d';
       c.fillRect(x, y + 1, Math.round(W * Math.min(1, v)), 3);
+    }
+
+    // (64) barra do TAKEOVER embaixo do seu jogador (cheia: L3 + R3)
+    const tk = g.tk64;
+    if (tk && u && u === g.pg && tk.meter > 0.02 && live && g.state !== 'replay') {
+      const s = this.project(u.x, u.y, -2);
+      const W = 26;
+      const x = Math.round(s.x - W / 2);
+      const y = Math.round(s.y + 8);
+      const full = tk.meter >= 1 || tk.active > 0;
+      c.fillStyle = '#10101a';
+      c.fillRect(x - 1, y - 1, W + 2, 5);
+      c.fillStyle = full ? (Math.floor(time / 150) % 2 ? '#ff8a2a' : '#ffd04d') : '#ff8a2a';
+      c.fillRect(x, y, Math.round(W * Math.min(1, tk.meter)), 3);
     }
 
     // textos flutuantes

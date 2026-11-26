@@ -31,6 +31,23 @@ import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 import { installPortraits } from './portrait3d.js';
 import { installSelect64 } from './select64.js';
+import { sfx } from '../audio/sfx.js';
+import { rumble } from '../game/mech64.js';
+
+// Vibração do controle (só no 64): contato, verde, roubo, toco, tornozelo quebrado, enterrada
+const RUMBLE = { ankle: [0.75, 0.4, 230], steal: [0.6, 0.3, 160], block: [0.9, 0.5, 220], green: [0, 0.35, 90] };
+let rumbleScene = null; // a partida ligada ao 3D (bind)
+const sfxPlay = sfx.play.bind(sfx);
+sfx.play = (name, ...args) => {
+  const g = rumbleScene;
+  const r = RUMBLE[name];
+  if (g && r) {
+    rumble(g, ...r);
+    // tornozelo quebrado pelo seu time: conta para o takeover
+    if (name === 'ankle' && g.offSide === 'home') g.ankles64 = (g.ankles64 || 0) + 1;
+  }
+  return sfxPlay(name, ...args);
+};
 
 // menus e placar com visual moderno (só nesta versão)
 enableModernTheme();
@@ -138,6 +155,11 @@ const world = new World3D(document.getElementById('v3d'), document.getElementByI
 let bound = null;
 function bind(scene) {
   bound = scene;
+  rumbleScene = scene;
+  if (world.ball !== scene.ball) {
+    scene.tk64 = null; // partida nova: takeover zerado
+    scene.ankles64 = 0;
+  }
   scene.cameras.main.setVisible(false); // o 2D da quadra some; o HUD (outra cena) continua
   // no 3D, ao começar o arremesso em movimento o jogador desacelera aos poucos (embalo natural)
   scene.gatherBrake = 0.35;
@@ -148,6 +170,11 @@ function bind(scene) {
     world.floatText(x, y, str, color);
   };
   world.attach(scene);
+  // enterrada sua: vibra forte quando a bola entra
+  if (!scene.ball.rumble64) scene.ball.rumble64 = scene.ball.on('rimIn', () => {
+    const sh = scene.ball.shot;
+    if (sh && sh.kind === 'dunk' && sh.shooter && sh.shooter.team === 'home') rumble(scene, 1, 0.7, 320);
+  });
 }
 
 // Um erro aqui dentro NUNCA pode escapar: o Phaser chama isto dentro do próprio laço, e uma

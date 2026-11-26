@@ -86,6 +86,7 @@ export function remapButtons64(g) {
   if (rb && hasBall && g.rbFace64 >= 0) screenOption(g, ['roll', null, 'pop', 'slip'][g.rbFace64]);
   watchScreen(g);
   giveAndGo(g, hasBall);
+  takeoverTick(g);
   const hold = hasBall && (keyHold || g.lbVision64);
   const prev = !!g.vision64Prev;
   g.btn.VISION = { isDown: hold, just: hold && !prev, up: !hold && prev };
@@ -464,6 +465,7 @@ export function driveContact(g, u, dt) {
     const atk = u.skills.finishing + (u.cm - 195) * 0.01 + (u.sprinting ? 0.15 : 0);
     const def = d.skills.defense + (d.cm - 195) * 0.01 + (set ? 0.25 : 0);
     u.bumpAt = d.bumpAt = g.time.now;
+    if (u === g.user) rumble(g, 0.55, 0.3, 140);
     // em sprint contra defensor plantado na frente (entre você e a cesta): pode ser falta de ataque
     if (set && u.sprinting && courtDist(d, g.basket) < courtDist(u, g.basket) && Math.random() < 0.2 * d.skills.defense) return offensiveFoul(g, u, d);
     g.floatText((u.x + d.x) / 2, Math.min(u.y, d.y) - 30, 'CONTATO', 0xffffff);
@@ -777,4 +779,101 @@ export function passMods64(g, from, to, opts) {
     g.floatText(from.x, from.y - from.headY - 14, 'PASSE VISTOSO', 0xffe14d);
   }
   return r;
+}
+
+// ------------------------------------------------------------------ TAKEOVER (L3 + R3)
+// Jogadas boas enchem a barra (pontos, assistências, roubos, tocos, tornozelos quebrados).
+// Cheia: L3 + R3 (teclado: T) ativa por 20 s — chute, finalização, drible e velocidade melhores.
+const TK_TIME = 20;
+const TK_GAIN = { pts: 0.06, ast: 0.18, stl: 0.2, blk: 0.2, ankle: 0.15 };
+
+export function takeoverTick(g) {
+  const u = g.pg;
+  if (!u || !g.stats) return;
+  const tk = g.tk64 || (g.tk64 = { meter: 0, active: 0, prev: { ...g.stats }, orig: null });
+  const dt = Math.min(0.1, (g.game.loop.delta || 16) / 1000);
+  if (tk.active <= 0) {
+    for (const k of ['pts', 'ast', 'stl', 'blk']) {
+      const d = (g.stats[k] || 0) - (tk.prev[k] || 0);
+      if (d > 0) tk.meter = Math.min(1, tk.meter + d * TK_GAIN[k]);
+    }
+    if (g.ankles64 > (tk.ankles || 0)) tk.meter = Math.min(1, tk.meter + TK_GAIN.ankle);
+    if (tk.meter >= 1 && !tk.readyShown) {
+      tk.readyShown = true;
+      g.events.emit('toast', 'TAKEOVER PRONTO: L3 + R3 (teclado: T)', 0xff8a2a);
+    }
+  }
+  tk.ankles = g.ankles64 || 0;
+  tk.prev = { ...g.stats };
+  // L3 + R3 (sozinhos eles continuam sendo replay / página, mas só ao soltar)
+  const l3 = g.btn.REPLAY;
+  const r3 = g.btn.PAGE;
+  const both = l3.isDown && r3.isDown;
+  const keyT = g.keyT64 || (g.keyT64 = g.input.keyboard.addKey('T', false));
+  if ((both && !g.l3r3) || Phaser_JustDown(keyT)) startTakeover(g, tk);
+  if (both) g.l3r3 = true;
+  const delay = (b, arm) => {
+    if (b.just && b.isDown) {
+      g[arm] = true;
+      b.just = false;
+    }
+    if (b.up && g[arm]) {
+      if (!g.l3r3) b.just = true;
+      g[arm] = false;
+    }
+  };
+  delay(l3, 'l3Arm');
+  delay(r3, 'r3Arm');
+  if (!l3.isDown && !r3.isDown) g.l3r3 = false;
+  if (tk.active > 0) {
+    tk.active -= dt;
+    tk.meter = Math.max(0, tk.active / TK_TIME);
+    if (tk.active <= 0) endTakeover(g, tk);
+  }
+}
+
+function Phaser_JustDown(key) {
+  if (!key || !key.isDown) {
+    if (key) key._t64 = false;
+    return false;
+  }
+  if (key._t64) return false;
+  key._t64 = true;
+  return true;
+}
+
+function startTakeover(g, tk) {
+  if (tk.active > 0 || tk.meter < 1 || g.state !== 'live') return;
+  const u = g.pg;
+  tk.active = TK_TIME;
+  tk.readyShown = false;
+  tk.orig = u.skills;
+  const s = u.skills;
+  u.skills = { ...s, three: s.three * 1.1, mid: s.mid * 1.1, finishing: s.finishing * 1.1, crossAnkle: s.crossAnkle * 1.4, perfectWindow: s.perfectWindow * 1.35, speed: s.speed * 1.05 };
+  g.floatText(u.x, u.y - u.headY - 24, 'TAKEOVER!', 0xff8a2a);
+  g.events.emit('toast', 'TAKEOVER! 20 segundos de fogo', 0xff8a2a);
+  sfx.play('cheer');
+  rumble(g, 0.9, 0.6, 400);
+}
+
+function endTakeover(g, tk) {
+  tk.active = 0;
+  tk.meter = 0;
+  if (tk.orig) g.pg.skills = tk.orig;
+  tk.orig = null;
+}
+
+// ------------------------------------------------------------------ vibração do controle
+export function rumble(g, strong, weak, ms) {
+  if (g && g.lastInputPad === false) return;
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('rumble3d') === 'off') return;
+  } catch (e) {
+    /* sem storage: vibra */
+  }
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  for (const p of pads) {
+    const a = p.vibrationActuator;
+    if (a && a.playEffect) a.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
+  }
 }
