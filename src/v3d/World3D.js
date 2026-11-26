@@ -107,6 +107,7 @@ export default class World3D {
     this.sun = addLights(s);
     this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark, home: game.street ? null : game.homeTeam });
     this.camId = null; // ginásio novo: reaplica a câmera (arquibancada escondida etc.)
+    this.camPos = this.camera.position.clone(); // a câmera de entrada/replay parte daqui (nunca indefinida)
 
     // bola
     const ballMat = new THREE.MeshLambertMaterial({ map: ballTexture(), flatShading: true });
@@ -538,6 +539,7 @@ export default class World3D {
       const i = Math.min(4, Math.floor((T - 2.6) / 0.9));
       const p = g.home[i] || g.home[0];
       const m = this.models.get(p);
+      if (!m) return; // (ainda sem boneco: fica no plano anterior)
       const P = m.root.position;
       // na diagonal (o marcador fica bem na frente dele e taparia a câmera)
       const a = m.yaw - 0.75;

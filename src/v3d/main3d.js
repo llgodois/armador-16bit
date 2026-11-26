@@ -136,19 +136,51 @@ function bind(scene) {
   world.attach(scene);
 }
 
+// Um erro aqui dentro NUNCA pode escapar: o Phaser chama isto dentro do próprio laço, e uma
+// exceção mata o laço (o jogo "congela" no último quadro). Se o 3D falhar, a partida aparece
+// em 2D naquele quadro, o erro vai para o console (window.__erro3d) e tentamos de novo.
+let lastErrAt = -1e9;
 game.events.on('postrender', (_r, time) => {
   const scene = game.scene.getScene('Game');
-  const active = scene && (game.scene.isActive('Game') || game.scene.isPaused('Game')) && scene.ball && scene.all;
-  if (!active) {
-    if (bound) {
-      bound = null;
-      world.detach();
+  try {
+    if (world.lost) return; // contexto gráfico perdido: espera o navegador devolver
+    const active = scene && (game.scene.isActive('Game') || game.scene.isPaused('Game')) && scene.ball && scene.all;
+    if (!active) {
+      if (bound) {
+        bound = null;
+        world.detach();
+      }
+      world.showcase(time); // menus: o ginásio 3D vazio, câmera passeando
+      return;
     }
-    world.showcase(time); // menus: o ginásio 3D vazio, câmera passeando
-    return;
+    if (bound !== scene || world.ball !== scene.ball) bind(scene);
+    world.render(time);
+  } catch (e) {
+    if (time - lastErrAt > 3000) {
+      lastErrAt = time;
+      console.error('[Armador 64] erro no 3D (o jogo segue; tentando de novo):', e);
+      window.__erro3d = { msg: String(e && e.message), stack: String(e && e.stack) };
+    }
+    // segurança: mostra a partida em 2D e refaz o 3D no próximo quadro
+    bound = null;
+    try {
+      world.detach();
+    } catch {
+      /* ignore */
+    }
+    if (scene && scene.cameras && scene.cameras.main) scene.cameras.main.setZoom(UI_ZOOM).setVisible(true);
   }
-  if (bound !== scene || world.ball !== scene.ball) bind(scene);
-  world.render(time);
+});
+// placa de vídeo / driver resetou o contexto do WebGL: reconstrói tudo quando voltar
+const cv3d = document.getElementById('v3d');
+cv3d.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  world.lost = true;
+});
+cv3d.addEventListener('webglcontextrestored', () => {
+  world.lost = false;
+  world.show = null; // ginásio dos menus é refeito
+  bound = null; // a partida é religada no próximo quadro
 });
 
 if (import.meta.env.DEV) {
