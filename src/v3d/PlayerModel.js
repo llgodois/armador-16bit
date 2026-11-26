@@ -140,7 +140,9 @@ export default class PlayerModel {
     const sprint = !!s.sprinting || spd > 88;
     // passo pela distância: cada passo (meio ciclo) cobre "stride" unidades
     const run01 = clamp(spd / 90, 0, 1);
-    const stride = gait === 'run' ? 8 + 10 * run01 : gait === 'shuffle' ? 7 : 6;
+    // (limite de ~3 passos por segundo de cada perna: mais rápido que isso a suavização "engole" a passada
+    // e o boneco parece travado — acontecia correndo de costas/de lado em velocidade)
+    const stride = Math.max(gait === 'run' ? 8 + 10 * run01 : gait === 'shuffle' ? 7 : 6, (spd * Math.PI) / 17);
     if (!air) this.phase += (dt * spd * Math.PI) / stride;
     const k = (r) => (dt > 0 ? 1 - Math.exp(-r * dt) : 1);
     this.amp = approach(this.amp, gait === 'idle' ? 0 : gait === 'run' ? 0.3 + 0.6 * run01 + (sprint ? 0.15 : 0) : 0.55, k(10));
@@ -337,13 +339,21 @@ export default class PlayerModel {
     }
     this.fallT = Math.max(0, (this.fallT || 0) - dt);
     const fk = this.fallT > 0 ? Math.min(1, this.fallT / 0.25, (this.fallMax - this.fallT) / 0.1) : 0;
-    this.body.rotation.x = -1.15 * fk; // tomba para trás
+    // senta no chão: o corpo inclina para trás (o giro é a partir dos pés) e desce só o
+    // bastante para o QUADRIL encostar no piso; as pernas ficam esticadas, deitadas no chão
+    const tilt = 0.55 * fk;
+    this.body.rotation.x = -tilt;
     if (fk > 0) {
-      this.root.position.y -= 9 * fk * this.root.scale.y; // senta no chão (a raiz é reposta a cada quadro)
+      // (-4: a base do calção fica abaixo do quadril; desce menos para ela não entrar no piso)
+      const hipY = (this.legs[0].hip.position.y * Math.cos(tilt) + this.body.position.y - 4) * this.root.scale.y;
+      // (a raiz, nos pés, fica abaixo do piso: com as pernas deitadas, quem encosta no chão é o quadril)
+      this.root.position.y -= hipY * fk;
       this.body.rotation.z *= 1 - fk; // no chão, sem balançar
       for (const leg of this.legs) {
-        leg.hip.rotation.x += (-1.35 - leg.hip.rotation.x) * fk; // pernas para a frente
-        leg.knee.rotation.x += (0.35 - leg.knee.rotation.x) * fk;
+        // perna na horizontal: 90° no total, já descontando a inclinação do corpo
+        leg.hip.rotation.x += (-(Math.PI / 2 - tilt) - leg.hip.rotation.x) * fk;
+        leg.knee.rotation.x += (0.2 - leg.knee.rotation.x) * fk;
+        leg.hip.rotation.z *= 1 - fk;
       }
       L.sh.quaternion.slerp(eulerQ(0.9, 0, -0.5), fk); // mãos para trás, apoiando no chão
       R.sh.quaternion.slerp(eulerQ(0.9, 0, 0.5), fk);

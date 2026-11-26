@@ -246,6 +246,17 @@ export default class World3D {
         fx = vx;
         fz = vy / PLAYER.verticalFactor;
       }
+      // Voltando para a defesa (rápido e longe da bola): o jogo manda olhar para a bola, o que vira
+      // uma corrida de costas esquisita. Como no 2K, ele vira e corre de frente; perto, volta a encarar.
+      const ballD = Math.hypot(g.ball.x - x, g.ball.y - y);
+      const backRun = !replay && g.offSide && p.team !== g.offSide && spd > 60 && ballD > 70; // voltando em velocidade
+      if (backRun) {
+        const away = fx * vx + fz * (vy / PLAYER.verticalFactor) < 0; // estaria correndo de costas
+        if (away || ballD > 110) {
+          fx = vx;
+          fz = vy / PLAYER.verticalFactor;
+        }
+      }
 
       const b = g.ball;
       const holding = !replay && b.state === 'held' && b.holder === p && p.pose !== 'shoot';
@@ -294,7 +305,7 @@ export default class World3D {
           shoot,
           stun: p.stun,
           lunge: p.lunge,
-          defending: !replay && g.offSide && p.team !== g.offSide && g.state === 'live',
+          defending: !replay && g.offSide && p.team !== g.offSide && g.state === 'live' && !backRun, // (correndo de volta: postura normal)
           dribble,
           hold,
           ballWorld,
