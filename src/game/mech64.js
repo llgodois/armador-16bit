@@ -801,8 +801,7 @@ export function takeoverTick(g) {
     if (g.ankles64 > (tk.ankles || 0)) tk.meter = Math.min(1, tk.meter + TK_GAIN.ankle);
     if (tk.meter >= 1 && !tk.readyShown) {
       tk.readyShown = true;
-      // faixa no meio da tela (o toast do topo era coberto pelas dicas do técnico)
-      g.events.emit('banner', 'TAKEOVER PRONTO', 'aperte L3 + R3 juntos (teclado: T)', 0xff8a2a, 2.2);
+      tk.readyAt = g.time.now; // o selo no canto (World3D) pisca forte por alguns segundos
       sfx.play('life');
       rumble(g, 0.4, 0.4, 200);
     }
@@ -857,7 +856,6 @@ function startTakeover(g, tk) {
   tk.baseSpeed = u.baseSpeed;
   if (u.baseSpeed) u.baseSpeed *= 1.05; // (a velocidade fica guardada no jogador)
   g.floatText(u.x, u.y - u.headY - 24, 'TAKEOVER!', 0xff8a2a);
-  g.events.emit('banner', 'TAKEOVER!', '20 segundos de fogo', 0xff8a2a, 1.4);
   sfx.play('cheer');
   rumble(g, 0.9, 0.6, 400);
 }
@@ -910,3 +908,109 @@ export function dribbleBurst64(g, u, ix, iy, moving, dt) {
 
 // recarga entre dribles pela nota de drible: elite (~97) encadeia em ~0,45 s; fraco (~60) ~0,8 s
 export const dribbleCd64 = (u) => 1.1 - 0.5 * clamp(((u.skills.handle ?? 75) - 55) / 44, 0, 1);
+
+// ------------------------------------------------------------------ analógico direito à prova de gatilho
+// Alguns controles/navegadores (mapeamento não-padrão) entregam o LT/RT também como EIXO — às vezes
+// justamente no lugar do analógico direito. Aí segurar o LT parecia o analógico empurrado (drible,
+// o jogador "andava sozinho"). Um eixo que anda junto com o LT/RT ou que fica parado em -1 é gatilho
+// e não entra aqui. Devolve [x, y] do analógico direito.
+export function rightStick64(g, pad) {
+  if (!pad) return [0, 0];
+  const ax = pad.axes || [];
+  const st = g.padAxes64 && g.padAxes64.id === pad.id ? g.padAxes64 : (g.padAxes64 = { id: pad.id, trig: new Set(), rest: [] });
+  const bv = (i) => (pad.buttons[i] ? pad.buttons[i].value || (pad.buttons[i].pressed ? 1 : 0) : 0);
+  const lt = bv(6);
+  const rt = bv(7);
+  for (let i = 2; i < ax.length && pad.mapping !== 'standard'; i++) {
+    const v = ax[i] || 0;
+    if (st.rest[i] == null) st.rest[i] = v;
+    if (st.rest[i] < -0.9) st.trig.add(i); // gatilho em repouso (DirectInput: -1)
+    for (const t of [lt, rt]) {
+      // anda junto com o gatilho (0..1 ou -1..1)
+      if (t > 0.6 && (Math.abs(v - t) < 0.12 || Math.abs(v - (2 * t - 1)) < 0.12) && Math.abs(st.rest[i]) < 0.2 && Math.abs(v) > 0.5) {
+        st.hits = st.hits || {};
+        st.hits[i] = (st.hits[i] || 0) + 1;
+        if (st.hits[i] > 20) st.trig.add(i);
+      }
+    }
+  }
+  const free = [];
+  for (let i = 2; i < ax.length && free.length < 2; i++) if (!st.trig.has(i)) free.push(i);
+  // padrão (Xbox/PS no Chrome): eixos 2 e 3. O gatilho segurado com o eixo "andando junto" ainda não
+  // confirmado: enquanto o LT/RT está apertado, ignora eixo que bate exatamente com ele.
+  const read = (i) => {
+    if (i == null) return 0;
+    const v = ax[i] || 0;
+    if (pad.mapping !== 'standard') for (const t of [lt, rt]) if (t > 0.3 && (Math.abs(v - t) < 0.08 || Math.abs(v - (2 * t - 1)) < 0.08)) return 0;
+    return v;
+  };
+  return [read(free[0]), read(free[1])];
+}
+
+// ------------------------------------------------------------------ gatilho que mexe o analógico
+// Em alguns controles, apertar o LT (ou o RT) já desloca um pouco o analógico (folga/defeito
+// do controle) — o jogador "andava sozinho". Ao apertar o gatilho com o analógico parado, o jogo
+// mede esse deslocamento ("fantasma"), lembra dele e o desconta enquanto o gatilho estiver
+// apertado, com uma folga maior. Devolve um "pad" igual ao original, só com os eixos corrigidos.
+const PAIRS = [[0, 1], [2, 3]];
+export function deghostPad64(g, pad) {
+  if (!pad) return pad;
+  const ax = [...pad.axes];
+  const st = g.ghost64 || (g.ghost64 = { prev: ax.slice(), trig: {} });
+  const now = performance.now(); // (relógio real: a calibração funciona também no pause)
+  const val = (i) => (pad.buttons[i] ? pad.buttons[i].value || (pad.buttons[i].pressed ? 1 : 0) : 0);
+  const out = ax.slice();
+  for (const ti of [6, 7]) {
+    const t = val(ti);
+    const T = st.trig[ti] || (st.trig[ti] = { on: false, ghost: PAIRS.map(() => [0, 0]), pre: null, t0: 0, acc: PAIRS.map(() => [0, 0, 0]) });
+    if (t > 0.15 && !T.on) {
+      T.on = true;
+      T.t0 = now;
+      T.pre = st.prev.slice(); // como estavam os analógicos antes de apertar
+      T.acc = PAIRS.map(() => [0, 0, 0]);
+      T.saved = false;
+    } else if (t <= 0.15 && T.on) T.on = false;
+    if (T.on && !T.saved && now - T.t0 >= 300) {
+      T.saved = true;
+      // fim da medição: guarda o fantasma (média com o que já sabia) e já passa a descontar
+      PAIRS.forEach((_, k) => {
+        const [sx, sy, n] = T.acc[k];
+        if (n >= 3) {
+          const gx = sx / n;
+          const gy = sy / n;
+          T.ghost[k] = [T.ghost[k][0] * 0.4 + gx * 0.6, T.ghost[k][1] * 0.4 + gy * 0.6];
+        }
+      });
+    }
+    if (!T.on) continue;
+    const learning = now - T.t0 < 300;
+    PAIRS.forEach(([a, b], k) => {
+      const pre = T.pre;
+      const wasIdle = pre && Math.hypot(pre[a] || 0, pre[b] || 0) < 0.15;
+      let x = (out[a] || 0) - T.ghost[k][0] * t;
+      let y = (out[b] || 0) - T.ghost[k][1] * t;
+      if (learning && wasIdle && t > 0.5) {
+        const dx = (ax[a] || 0) - (pre[a] || 0);
+        const dy = (ax[b] || 0) - (pre[b] || 0);
+        // mudança pequena logo depois de apertar = fantasma (empurrão de verdade é grande)
+        if (Math.hypot(dx, dy) < 0.6) {
+          T.acc[k][0] += dx / t;
+          T.acc[k][1] += dy / t;
+          T.acc[k][2] += 1;
+          x = 0;
+          y = 0;
+        }
+      }
+      // folga maior com o gatilho apertado
+      const gm = Math.hypot(T.ghost[k][0], T.ghost[k][1]);
+      if (Math.hypot(x, y) < 0.22 + gm * 0.5) {
+        x = 0;
+        y = 0;
+      }
+      out[a] = x;
+      out[b] = y;
+    });
+  }
+  st.prev = ax;
+  return { id: pad.id, index: pad.index, mapping: pad.mapping, buttons: pad.buttons, axes: out, raw: pad };
+}

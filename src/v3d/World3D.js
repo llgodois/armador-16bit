@@ -811,26 +811,29 @@ export default class World3D {
       c.fillRect(x - 1, y - 1, W + 2, 6);
       c.fillStyle = full ? (Math.floor(time / 150) % 2 ? '#ff8a2a' : '#ffd04d') : '#ff8a2a';
       c.fillRect(x, y, Math.round(W * Math.min(1, tk.meter)), 4);
-      // cheia e ainda não ativada: lembrete fixo do botão até você usar
-      if (tk.meter >= 1 && !(tk.active > 0)) {
-        // fixo no canto, acima da barra de gás (embaixo do jogador o rodapé cobria)
-        c.font = '800 17px "Barlow Condensed", sans-serif';
-        const lbl = g.glyphMode === 'teclado' ? 'TAKEOVER PRONTO: T' : 'TAKEOVER PRONTO: L3 + R3';
-        const tw = c.measureText(lbl).width + 18;
-        const px = Math.round(this.W * 0.01);
-        const py = Math.round(this.H * 0.745);
-        c.globalAlpha = 0.85;
-        c.fillStyle = '#10101a';
-        c.fillRect(px, py, tw, 24);
-        c.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(time / 220));
-        c.fillStyle = '#ff8a2a';
-        c.fillRect(px, py + 22, tw, 2);
-        c.textAlign = 'left';
-        c.fillStyle = '#ffb24d';
-        c.fillText(lbl, px + 9, py + 12);
-        c.textAlign = 'center';
-        c.globalAlpha = 1;
-      }
+    }
+    // (64) selo pequeno do TAKEOVER no canto, acima do gás: pronto (com o botão) ou ativo (contagem).
+    // Nos primeiros 3 s depois de encher ele pisca forte — sem faixa no meio da tela.
+    if (tk && u === g.pg && g.state !== 'replay' && (tk.active > 0 || tk.meter >= 1)) {
+      const on = tk.active > 0;
+      const fresh = !on && time - (tk.readyAt ?? -1e9) < 3000;
+      const key = g.glyphMode === 'teclado' ? 'T' : 'L3 + R3';
+      const lbl = on ? `TAKEOVER  ${Math.ceil(tk.active)}s` : `TAKEOVER PRONTO: ${key}`;
+      c.font = `800 ${fresh ? 16 : 14}px "Barlow Condensed", sans-serif`;
+      const tw = Math.round(c.measureText(lbl).width + 14);
+      const px = Math.round(this.W * 0.01);
+      const py = Math.round(this.H * 0.75);
+      c.globalAlpha = 0.85;
+      c.fillStyle = '#10101a';
+      c.fillRect(px, py, tw, 20);
+      c.globalAlpha = fresh ? 0.55 + 0.45 * Math.abs(Math.sin(time / 110)) : 1;
+      c.fillStyle = '#ff8a2a';
+      c.fillRect(px, py + 18, on ? Math.round(tw * Math.min(1, tk.active / 20)) : tw, 2);
+      c.textAlign = 'left';
+      c.fillStyle = on ? '#ffd04d' : '#ffb24d';
+      c.fillText(lbl, px + 7, py + 10);
+      c.textAlign = 'center';
+      c.globalAlpha = 1;
     }
 
     // textos flutuantes

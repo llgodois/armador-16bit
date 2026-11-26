@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -935,8 +935,9 @@ export default class GameScene extends Phaser.Scene {
     }
     this.pad = pad;
     if (this.v64) {
+      this.pad = deghostPad64(this, pad); // (64) desconta o analógico que o LT/RT mexe sozinho
       remapButtons64(this); // LT = proteger · LB segurado = visão · LB toque = bloqueio
-      this.readProStick(pad);
+      this.readProStick(this.pad);
     }
   }
 
@@ -948,8 +949,7 @@ export default class GameScene extends Phaser.Scene {
   // Na defesa: para cima = mão alta.
   readProStick(pad) {
     const ps = this.proStick || (this.proStick = { held: false, shoot: false, hands: false });
-    const sx = pad ? pad.axes[2] || 0 : 0;
-    const sy = pad ? pad.axes[3] || 0 : 0;
+    const [sx, sy] = rightStick64(this, pad); // (à prova de LT/RT entregue como eixo)
     const mag = Math.hypot(sx, sy);
     const now = this.time.now;
     const u = this.user;
