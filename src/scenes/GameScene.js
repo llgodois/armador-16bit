@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -879,6 +879,9 @@ export default class GameScene extends Phaser.Scene {
     const lbVision64 = !!(this.v64 && u64 && !this.userOnDefense && this.ball && this.ball.holder === u64 && this.ball.state === 'held' &&
       now[P.SCREEN] && this.lbAt && this.time.now - this.lbAt > 180 && !this.lbUsed);
     this.lbVision64 = lbVision64;
+    // (só no 64) RB = bloqueio: o estado cru e o botão de face apertado com ele (A rola · X abre · Y slip)
+    this.rbDown64 = !!(this.v64 && now[P.ICON]);
+    this.rbFace64 = this.rbDown64 ? [0, 1, 2, 3].findIndex((i) => hit(i)) : -1;
     const modCmd = now[P.E];
     // (só no 64) LB segurado no ataque: menu de companheiros (LB + A/B/X/Y escolhe, depois a ação)
     // (na defesa: LB + botão escolhe quem dobra)
@@ -905,7 +908,7 @@ export default class GameScene extends Phaser.Scene {
     this.padScreenTap = !now[lb] && !!prevRaw[lb] && !this.lbUsed && this.time.now - (this.lbAt || 0) < (this.v64 ? 180 : 350);
     this.padScreenHold = now[lb] && !this.lbUsed && this.time.now - (this.lbAt || 0) > 120;
     if (dpad >= 0) this.padPlay = dpad + (modCmd ? 4 : 0);
-    const pb = (i) => !this.padMod && now[i];
+    const pb = (i) => !this.padMod && !this.rbDown64 && now[i];
     const src = {
       K: [k.K, pb(P.K)],
       J: [k.J, pb(P.J)],
@@ -1589,6 +1592,13 @@ export default class GameScene extends Phaser.Scene {
         return;
       }
     }
+    // (só no 64) A segurado + Y = PASSE VISTOSO (sem olhar): mais rápido e difícil de ler
+    if (this.v64 && hasBall && this.btn.LOB.just && this.btn.J.isDown && this.passTarget && !this.inbound) {
+      this.iconUsed = true;
+      this.jArmed = false;
+      this.doPass(u, this.passTarget, { flashy: true });
+      return;
+    }
     // ALLEY-OOP: segure J (mirando um companheiro perto do aro) e aperte K
     if (hasBall && ((this.btn.K.just && this.btn.J.isDown) || this.btn.LOB.just) && this.passTarget && !this.inbound) {
       const t = this.passTarget;
@@ -2003,6 +2013,11 @@ export default class GameScene extends Phaser.Scene {
     }
     if (opts.bounce) this.ball.bounce = true;
     // (só no 64) passe à frente de quem está correndo; passe longo vira passe cruzado (alto, mais lento)
+    if (this.v64 && from === this.user && !this.inbound) {
+      const pm = passMods64(this, from, to, opts);
+      mult *= pm.mult;
+      speed *= pm.speed;
+    }
     if (this.v64 && !opts.bounce && !this.ball.lob) {
       const tv = to.body.velocity;
       if (Math.hypot(tv.x, tv.y) > 45) this.ball.nextLead = { vx: tv.x, vy: tv.y };

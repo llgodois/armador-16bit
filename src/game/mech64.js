@@ -74,7 +74,18 @@ export function remapButtons64(g) {
     g.cDownAt = 0;
   }
   const keyHold = !!(key && key.isDown && g.cDownAt && now - g.cDownAt > 180);
-  g.screenTap64 = keyTap || g.padScreenTap;
+  // RB = bloqueio (o toque no LB não chama mais): apertou com a bola = chama o bloqueio;
+  // segurando, A = rola para a cesta · X = abre para o 3 · Y = slip (corta antes do contato).
+  // Sem a bola, RB segurado = você bloqueia.
+  const rb = !!g.rbDown64;
+  const rbJust = rb && !g.rbPrev64;
+  if (rbJust) g.rbAt64 = now;
+  g.rbPrev64 = rb;
+  g.screenTap64 = keyTap || (rbJust && hasBall && !screener64(g)); // (já vindo: o RB só escolhe a opção)
+  g.padScreenHold = !hasBall && rb && now - (g.rbAt64 || 0) > 120;
+  if (rb && hasBall && g.rbFace64 >= 0) screenOption(g, ['roll', null, 'pop', 'slip'][g.rbFace64]);
+  watchScreen(g);
+  giveAndGo(g, hasBall);
   const hold = hasBall && (keyHold || g.lbVision64);
   const prev = !!g.vision64Prev;
   g.btn.VISION = { isDown: hold, just: hold && !prev, up: !hold && prev };
@@ -668,4 +679,102 @@ export function dribble64(g, u, kind, ix, iy) {
   g.floatText(u.x, u.y - u.headY - 18, 'SNATCH BACK', 0x6fa0ff);
   sfx.play('cross');
   g.ankleCheck(0.75 * comboStep(g, u), 'RECUOU!');
+}
+
+// ------------------------------------------------------------------ bloqueio no RB: rolar / abrir / slip
+function screener64(g) {
+  const u = g.user;
+  let best = null;
+  for (const p of g.home) {
+    if (p === u || !p.motion || p.motion.action !== 'ballscreen') continue;
+    if (!best || p.distTo(u) < best.distTo(u)) best = p;
+  }
+  return best;
+}
+
+const SCREEN_LABEL = { roll: 'ROLA!', pop: 'ABRE!', slip: 'SLIP!' };
+
+function screenOption(g, opt) {
+  if (!opt) return;
+  const p = screener64(g);
+  if (!p) {
+    // ninguém vindo ainda: chama o bloqueio e já guarda a escolha
+    if (g.callScreen) g.callScreen();
+  }
+  const s = p || screener64(g);
+  if (!s) return;
+  s.screenOpt = opt;
+  g.floatText(s.x, s.y - s.headY - 16, SCREEN_LABEL[opt], 0x3ad6ff);
+  sfx.play('select');
+  if (opt === 'slip') {
+    // slip: nem encosta, corta direto para a cesta
+    s.body.pushable = true;
+    Object.assign(s.motion, { action: 'cut', phase: 0, t: 2.4, holdT: undefined, backdoor: false, slot: null, mate: null });
+    s.screenOpt = null;
+  } else if (opt === 'pop' && s.motion.phase > 0) openToThree(g, s);
+}
+
+function openToThree(g, p) {
+  const taken = new Set(g.offTeam.filter((o) => o !== p && o.motion).map((o) => o.motion.slot));
+  let best = THREE_SPOTS[0];
+  let bd = Infinity;
+  for (const s of THREE_SPOTS) {
+    if (taken.has(s)) continue;
+    const pt = g.slot(s);
+    const d = Math.hypot(pt.x - p.x, pt.y - p.y);
+    if (d < bd) [bd, best] = [d, s];
+  }
+  p.body.pushable = true;
+  Object.assign(p.motion, { action: 'spot', slot: best, phase: 0, t: 4, holdT: undefined, fastT: 1.4, mate: null });
+  p.screenOpt = null;
+}
+
+// depois do contato do bloqueio: quem escolheu "abrir" vai para o 3 (rolar é o padrão)
+function watchScreen(g) {
+  for (const p of g.home) {
+    if (!p.screenOpt || !p.motion) continue;
+    if (p.motion.action !== 'ballscreen') p.screenOpt = null;
+    else if (p.screenOpt === 'pop' && p.motion.phase > 0) openToThree(g, p);
+  }
+}
+
+// ------------------------------------------------------------------ tabela (give-and-go)
+// Passou para um colega e apertou A de novo (sem a bola) em até 3 s: ele devolve na hora,
+// à frente de você se estiver correndo.
+function giveAndGo(g, hasBall) {
+  const u = g.user;
+  const b = g.ball;
+  const now = g.time.now;
+  if (!u || g.userOnDefense) return;
+  if (b.state === 'pass' && b.passFrom === u && b.passTo) g.lastPass64 = { to: b.passTo, at: now };
+  const lp = g.lastPass64;
+  if (!lp || hasBall || now - lp.at > 3000 || !g.btn.J.just) return;
+  const h = b.state === 'held' ? b.holder : null;
+  if (h !== lp.to || h === u || h.team !== u.team || g.inbound || h.layupT > 0 || h.pose === 'shoot') return;
+  g.lastPass64 = null;
+  g.floatText(h.x, h.y - h.headY - 12, 'TABELA!', 0x3ad6ff);
+  h.drive = null;
+  g.giveGoAt = now;
+  g.doPass(h, u);
+}
+
+// ------------------------------------------------------------------ passes do 64 (você passando)
+// handoff: colega colado (entrega na mão, quase impossível de cortar)
+// vistoso (A segurado + Y): sem olhar, mais rápido e a defesa lê pior
+export function passMods64(g, from, to, opts) {
+  const r = { mult: 1, speed: 1 };
+  const d = Math.hypot(to.x - from.x, to.y - from.y);
+  if (d < 20 && !opts.bounce && !g.ball.lob) {
+    r.mult = 0.1;
+    r.speed = 1.5;
+    g.floatText(from.x, from.y - from.headY - 14, 'HANDOFF', 0x6fa0ff);
+    return r;
+  }
+  if (opts.flashy) {
+    r.mult = 0.65;
+    r.speed = 1.25;
+    from.flashyAt = g.time.now;
+    g.floatText(from.x, from.y - from.headY - 14, 'PASSE VISTOSO', 0xffe14d);
+  }
+  return r;
 }
