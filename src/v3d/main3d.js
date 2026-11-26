@@ -30,10 +30,12 @@ import { installPadBridge } from '../ui/padBridge.js';
 import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 import { installPortraits } from './portrait3d.js';
+import { installSelect64 } from './select64.js';
 
 // menus e placar com visual moderno (só nesta versão)
 enableModernTheme();
 installPortraits(); // telas de menu: retratos 3D no lugar dos bonecos pixelados
+installSelect64(SelectScene); // "Monte seu jogo" redesenhado (só no 64)
 fontsReady().then(start);
 
 function start() {
