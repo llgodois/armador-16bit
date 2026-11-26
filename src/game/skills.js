@@ -21,7 +21,7 @@ export function makeSkills(info, build, profile = null) {
   // cada jogador tem também um traço individual (fixo, derivado do nome).
   const trait = ([...(info.name || 'x')].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 21) / 100 - 0.1; // -0.10..+0.10
   const endurance = Math.max(0.65, Math.min(1.35, 1 + (r.spd - 75) * 0.008 - (info.cm - 196) * 0.008 + trait));
-  return {
+  const s = {
     endurance,
     gasDrain: (STAMINA.sprintDrain / endurance) * (b.staminaDrain ?? 1),
     gasRegen: STAMINA.regen * endurance,
@@ -46,4 +46,23 @@ export function makeSkills(info, build, profile = null) {
     perfectWindow: (b.perfectWindow ?? 1) * (0.8 + (0.5 * (r.three - 40)) / 59) * (profile ? profile.window : 1),
     timingMax: profile ? profile.max : SHOT.timingMax,
   };
+  // (só no 64) atributos do NBA 2K27 (info.x só existe nos elencos do 3d.html)
+  if (info.x) apply2K(s, info.x);
+  return s;
+}
+
+// 2K (25-99) -> multiplicadores. Jogador médio (~70) fica perto de 1.
+const k2 = (v, lo, hi) => lo + (Math.max(25, Math.min(99, v ?? 70)) - 25) / 74 * (hi - lo);
+function apply2K(s, x) {
+  s.handle = x.hdl ?? 70; // drible (0-99): tamanho/rapidez dos movimentos e quebrar o marcador
+  s.crossAnkle *= k2(x.hdl, 0.55, 1.35);
+  s.handleSafe = k2(x.hdl, 1.25, 0.7); // menos roubos sofridos com drible bom
+  s.stealMult *= k2(x.stl, 0.6, 1.45);
+  s.blockMult *= k2(x.blk, 0.5, 1.6);
+  s.endurance = Math.max(0.65, Math.min(1.4, s.endurance * k2(x.sta, 0.85, 1.15)));
+  s.gasDrain = s.gasDrain / k2(x.sta, 0.85, 1.15);
+  s.rebounding *= k2(x.vrt, 0.9, 1.12);
+  s.strength = k2(x.str, 0.7, 1.3); // jogo de costas e contato
+  s.ft = (x.ft ?? 75) / 100; // lance livre
+  s.dunk = x.dnk ?? 50; // enterrada: precisa de 60+ para enterrar quando pede
 }

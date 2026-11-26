@@ -90,7 +90,7 @@ function drawTeamStep(side) {
   g.fillStyle(0x22314d, 1).fillRect(X0 + 8, vy - 4, 212, 1);
   const hLocked = h && this.locks && !isTeamUnlocked(this.registry.get('profile'), h);
   const hLabel = h ? `HISTORICO ${h.era}${hLocked ? `  [X] ${historicRequirement(h)} PTS` : ''}` : 'HISTORICO';
-  [['ATUAL 2025-26', 0], [hLabel, 1]].forEach(([label, k]) => {
+  [['ATUAL 2026-27', 0], [hLabel, 1]].forEach(([label, k]) => {
     const on = c.ver === k;
     const y = vy + k * 12;
     if (on) g.fillStyle(c.focus === 'ver' ? 0xffe14d : 0x6fa0ff, 0.18).fillRoundedRect(X0 + 8, y - 2, 212, 11, 3);

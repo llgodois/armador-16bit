@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -957,7 +957,9 @@ export default class GameScene extends Phaser.Scene {
     const prevShoot = ps.shoot;
     const prevHands = ps.hands;
     this.stickMove = null;
-    if (mag > 0.75) {
+    if (mag > 0.75 && !ps.held && now < (ps.lockUntil || 0)) {
+      // rebote do analógico voltando ao centro (passa do meio para o outro lado): ignora
+    } else if (mag > 0.75) {
       const ang = Math.atan2(sy, sx);
       if (!ps.held) {
         ps.held = true;
@@ -967,6 +969,7 @@ export default class GameScene extends Phaser.Scene {
         ps.sweep = 0;
         ps.lastAng = ang;
         ps.fired = false;
+        ps.spun = false;
         ps.shoot = withBall && sy / mag > 0.92; // para baixo (reto): arremesso; na diagonal é step-back
         ps.hands = !withBall && this.userOnDefense && sy / mag < -0.7; // defesa, para cima: mão alta
       } else {
@@ -975,14 +978,21 @@ export default class GameScene extends Phaser.Scene {
         ps.sweep += d;
         ps.lastAng = ang;
         // meia volta no analógico = giro
-        if (!ps.fired && !ps.shoot && withBall && Math.abs(ps.sweep) > 2.4) {
+        if (!ps.spun && !ps.shoot && withBall && Math.abs(ps.sweep) > 2.4) {
+          ps.spun = true; // (vale mesmo se o toque já saiu: toque + giro = combo)
           ps.fired = true;
           this.stickMove = { kind: 'spin' };
+        } else if (!ps.fired && !ps.shoot && withBall && now - ps.t0 > 90 && Math.abs(ps.sweep) < 0.5 && !isLayupZone(u, this.dir)) {
+          // (perto do aro espera soltar: lá o giro escolhe a finalização)
+          // empurrou e segurou firme numa direção (sem girar): o drible sai já, sem esperar soltar
+          ps.fired = true;
+          this.stickMove = { kind: 'flick', sx: ps.sx, sy: ps.sy };
         }
       }
     } else if (mag < 0.35 && ps.held) {
       // soltou rápido: foi um "toque" naquela direção
       if (!ps.fired && !ps.shoot && !ps.hands && withBall && now - ps.t0 < 350) this.stickMove = { kind: 'flick', sx: ps.sx, sy: ps.sy };
+      if (ps.fired || this.stickMove) ps.lockUntil = now + 140; // o analógico volta e pode passar do centro
       ps.held = false;
       ps.shoot = false;
       ps.hands = false;
@@ -1649,7 +1659,10 @@ export default class GameScene extends Phaser.Scene {
     } else if (u.hesiT > 0) {
       u.hesiT -= dt; // hesitação: freia...
       u.moveDir(0, 0, 0, dt * 4);
-    } else if (u.crossTimer > 0) u.moveDir(u.crossDir.x, u.crossDir.y, u.speed * CROSSOVER.burstMult, dt * 3);
+    } else if (u.crossTimer > 0) {
+      if (this.v64 && hasBall) dribbleBurst64(this, u, ix, iy, moving, dt); // (64: curto e sem sair da quadra)
+      else u.moveDir(u.crossDir.x, u.crossDir.y, u.speed * CROSSOVER.burstMult, dt * 3);
+    }
     else if (moving) {
       const m = this.slideAround(u, ix, iy);
       u.moveDir(m.x, m.y, speed * m.k, dt);
@@ -1669,7 +1682,11 @@ export default class GameScene extends Phaser.Scene {
     const spinTap = this.time.now - (this.lastL || -1e9) < 300 && this.lastMove !== 'spin';
     if (this.btn.L.just && hasBall && (u.crossCooldown <= 0 || spinTap) && this.stamina >= STAMINA.crossCost * 0.5) this.dribbleMove(ix, iy, moving);
     // (só no 64) Pro Stick: drible/finalização pelo analógico direito
-    else if (this.stickMove && hasBall && !this.gathering) this.useStickMove(u, ix, iy);
+    else if (this.stickMove && hasBall && !this.gathering) {
+      const cd0 = u.crossCooldown;
+      this.useStickMove(u, ix, iy);
+      if (u.crossCooldown > cd0) u.crossCooldown *= dribbleCd64(u); // (64: drible bom encadeia mais rápido)
+    }
     // L com a bola solta perto: mergulha na bola
     if (this.btn.L.just && ball.state === 'loose') this.dive(u);
 
@@ -2489,7 +2506,8 @@ export default class GameScene extends Phaser.Scene {
   ftShoot(q) {
     const ft = this.ft;
     const s = ft.shooter;
-    const skill = (s.skills.mid - 0.8) / 0.45;
+    // (64: nota de lance livre do 2K27, quando houver)
+    const skill = s.skills.ft != null ? Math.max(0, Math.min(1.05, (s.skills.ft - 0.5) / 0.48)) : (s.skills.mid - 0.8) / 0.45;
     const chance = clamp((FT.base + FT.skill * skill) * lerp(0.7, 1.12, q), 0.25, 0.97);
     const made = Math.random() < chance;
     s.setPose('shoot', 0.35);
@@ -2804,7 +2822,7 @@ export default class GameScene extends Phaser.Scene {
     let dunk = fin >= LAYUP.dunkMinFinishing && space >= LAYUP.dunkOpenDist && near && Math.random() < LAYUP.dunkTry;
     // (só no 64) você pediu a enterrada: sai se for atlético o bastante (finalização boa ou 1,96 m+)
     const asked = p.wantDunk && near;
-    if (asked) dunk = fin >= 0.95 || p.cm >= 196;
+    if (asked) dunk = p.skills.dunk != null ? p.skills.dunk >= 60 : fin >= 0.95 || p.cm >= 196; // (64: nota de enterrada do 2K27)
     p.wantDunk = false;
     // defensor colado entre você e o aro: flutuante (armadores/alas) ou gancho (grandalhões)
     const { d: nd } = this.nearestDefender(p);

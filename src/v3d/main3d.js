@@ -31,6 +31,7 @@ import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 import { installPortraits } from './portrait3d.js';
 import { installSelect64 } from './select64.js';
+import { installRoster64 } from './teams64.js';
 import { sfx } from '../audio/sfx.js';
 import { rumble } from '../game/mech64.js';
 
@@ -53,6 +54,7 @@ sfx.play = (name, ...args) => {
 enableModernTheme();
 installPortraits(); // telas de menu: retratos 3D no lugar dos bonecos pixelados
 installSelect64(SelectScene); // "Monte seu jogo" redesenhado (só no 64)
+installRoster64(); // elencos 2026-27 e atributos do 2K27 (só no 64)
 // placar da Sobrevivência: o RANKING inclui o bônus do desafio de estilo (só existe no 64)
 const hudUpdate = HUDScene.prototype.update;
 HUDScene.prototype.update = function (...args) {

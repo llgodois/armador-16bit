@@ -435,6 +435,7 @@ export default class DefenseAI {
     if (man !== g.user) chance *= DEFENSE.stealVsAiMult;
     if (g.isDoubled(man)) chance *= 2.2;
     if (man.protect) chance *= 0.3; // (só no 64) protegendo a bola com o LT
+    if (man.skills.handleSafe) chance *= man.skills.handleSafe; // (só no 64) drible do 2K27 protege a bola
     if (this.scheme().press && inBackcourt(man, g.dir)) chance *= 1.5;
     if (Math.random() < chance) g.onSteal(d, man);
     else g.maybeReachFoul(d, man);

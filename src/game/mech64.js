@@ -8,7 +8,7 @@
 //  - janela do verde que reage ao contexto (defensor perto, gás, arremesso em movimento)
 //  - tapinha / enterrada no rebote ofensivo
 // =====================================================================
-import { SHOT, STAMINA, PLAYER, USER_DEFENSE, REBOUND } from '../config.js';
+import { SHOT, STAMINA, PLAYER, USER_DEFENSE, REBOUND, COURT, MID_Y, CROSSOVER } from '../config.js';
 import { clamp, distToBasket, courtDist } from '../utils/math.js';
 import { sfx } from '../audio/sfx.js';
 
@@ -281,7 +281,7 @@ export function putback(g, p) {
   if (g.ball.holder !== p || g.ball.state !== 'held' || g.state !== 'live') return;
   p.putbackT = 0;
   const fin = p.skills.finishing;
-  const dunk = (fin >= 0.95 || p.cm >= 196) && Math.random() < 0.7;
+  const dunk = (p.skills.dunk != null ? p.skills.dunk >= 60 : fin >= 0.95 || p.cm >= 196) && Math.random() < 0.7;
   const chance = clamp((dunk ? 0.82 : 0.62) * fin * g.contestFactor(p, 18, 0.45), 0.15, 0.9);
   if (g.tryBlock(p, 1.2)) return;
   const made = Math.random() < chance;
@@ -398,7 +398,7 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
       const d = g.defenderOf(u);
       const toward = ix * b.x + iy * b.y;
       if (d && toward > 0.3 && d.distTo(u) < 15) {
-        const str = 0.3 + (u.cm - d.cm) * 0.01 + (u.skills.finishing - d.skills.defense) * 0.5;
+        const str = 0.3 + (u.cm - d.cm) * 0.01 + (u.skills.finishing - d.skills.defense) * 0.5 + ((u.skills.strength || 1) - (d.skills.strength || 1)) * 0.6;
         if (Math.random() < clamp(str, 0.05, 0.75) * dt * 4) d.setPosition(d.x + b.x * 2.5, d.y + b.y * 2.5);
       }
     } else u.moveDir(0, 0, 0, dt);
@@ -462,8 +462,9 @@ export function driveContact(g, u, dt) {
     const dv = d.body.velocity;
     const set = Math.hypot(dv.x, dv.y) < 30; // defensor plantado
     u.contactCD = 0.8;
-    const atk = u.skills.finishing + (u.cm - 195) * 0.01 + (u.sprinting ? 0.15 : 0);
-    const def = d.skills.defense + (d.cm - 195) * 0.01 + (set ? 0.25 : 0);
+    // (força do 2K27, quando houver: 0,7..1,3)
+    const atk = u.skills.finishing + (u.cm - 195) * 0.01 + (u.sprinting ? 0.15 : 0) + ((u.skills.strength || 1) - 1) * 0.5;
+    const def = d.skills.defense + (d.cm - 195) * 0.01 + (set ? 0.25 : 0) + ((d.skills.strength || 1) - 1) * 0.5;
     u.bumpAt = d.bumpAt = g.time.now;
     if (u === g.user) rumble(g, 0.55, 0.3, 140);
     // em sprint contra defensor plantado na frente (entre você e a cesta): pode ser falta de ataque
@@ -884,3 +885,28 @@ export function rumble(g, strong, weak, ms) {
     if (a && a.playEffect) a.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
   }
 }
+
+// ------------------------------------------------------------------ arranque do drible (você, no 64)
+// Mais curto que no 16-bit e ajustado pela nota de drible: bons dribladores fazem o movimento
+// rápido e curto; o analógico esquerdo ainda orienta um pouco; perto da linha, o arranque
+// desliza ao longo dela em vez de levar você para fora (antes virava 'Pisou fora!').
+export function dribbleBurst64(g, u, ix, iy, moving, dt) {
+  const q = clamp(((u.skills.handle ?? 75) - 55) / 44, 0, 1);
+  u.crossTimer = Math.max(0, u.crossTimer - dt * 0.35 * q); // (elite termina antes)
+  let dx = u.crossDir.x;
+  let dy = u.crossDir.y;
+  if (moving) {
+    dx = dx * 0.7 + ix * 0.3;
+    dy = dy * 0.7 + iy * 0.3;
+  }
+  const M = 16;
+  const bottom = (g.street ? MID_Y : COURT.bottom) - M;
+  if ((u.x < COURT.left + M && dx < 0) || (u.x > COURT.right - M && dx > 0)) dx = 0;
+  if ((u.y < COURT.top + M && dy < 0) || (u.y > bottom && dy > 0)) dy = 0;
+  const l = Math.hypot(dx, dy);
+  if (l < 0.05) return u.moveDir(0, 0, 0, dt * 4);
+  u.moveDir(dx / l, dy / l, u.speed * CROSSOVER.burstMult * (0.55 + 0.15 * q), dt * 3);
+}
+
+// recarga entre dribles pela nota de drible: elite (~97) encadeia em ~0,45 s; fraco (~60) ~0,8 s
+export const dribbleCd64 = (u) => 1.1 - 0.5 * clamp(((u.skills.handle ?? 75) - 55) / 44, 0, 1);

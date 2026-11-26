@@ -12,6 +12,46 @@
 //  Para corrigir alguém, é só editar a linha dele. Quem não está aqui usa o visual sorteado.
 // =====================================================================
 const RAW = {
+  // elenco 2026-27 (titulares novos do 64)
+  'Yaxel Lendeborg': 'e short k 0',
+  'Ziaire Williams': 'e short k 0',
+  'Sandro Mamukelashvili': 'a short n 1',
+  'Ajay Mitchell': 'e short k 0',
+  'Zaccharie Risacher': 'a curly b 0',
+  'PJ Washington': 'f short k 1 B',
+  'Daniel Gafford': 'f short k 0',
+  'Max Strus': 'a short n 1',
+  'Derrick Jones Jr': 'f short k 1',
+  'Fred VanVleet': 'f short k 2',
+  'Cedric Coward': 'e short k 0',
+  'Cameron Boozer': 'e short k 0 B',
+  'Ayo Dosunmu': 'f short k 0',
+  'Dejounte Murray': 'f braids k 0',
+  'Saddiq Bey': 'f short k 0',
+  'Derik Queen': 'f short k 0 B',
+  'Toumani Camara': 'g short k 0',
+  'Darius Acuff Jr': 'f short k 0',
+  'Precious Achiuwa': 'g short k 0',
+  'Dylan Harper': 'e short k 0',
+  'Darryn Peterson': 'f short k 0',
+  'Payton Pritchard': 'a short b 1',
+  'Norman Powell': 'f short k 1',
+  'Caleb Wilson': 'f short k 0',
+  'Ryan Rollins': 'f short k 0',
+  'Caris LeVert': 'e dreads k 1',
+  'Jaime Jaquez Jr': 'c short k 0',
+  'Nickeil Alexander-Walker': 'e short k 1',
+  'Nolan Traore': 'f short k 0',
+  'DayRon Sharpe': 'f short k 0 B',
+  'Naz Reid': 'f short k 1 B',
+  'Moussa Diabate': 'g short k 0',
+  'Peyton Watson': 'e short k 0',
+  'Duncan Robinson': 'a short b 1',
+  'Anthony Black': 'e short k 0',
+  'VJ Edgecombe': 'f short k 0',
+  'Collin Murray-Boyles': 'f short k 0 B',
+  'Kyshawn George': 'e short k 0',
+  'AJ Dybantsa': 'f short k 0',
   'A.C. Green': 'e short k 0',
   'Aaron Gordon': 'e short k 1',
   'Aaron McKie': 'f buzz k 0',
@@ -305,7 +345,9 @@ const cache = new Map();
 export function lookOf(name) {
   if (!name) return null;
   if (cache.has(name)) return cache.get(name);
-  const raw = RAW[name];
+  const alt = String(name).replace(/[.’']/g, '');
+  const ALIAS = { 'Alexandre Sarr': 'Alex Sarr', 'Nicolas Claxton': 'Nic Claxton', 'Cameron Johnson': 'Cam Johnson' };
+  const raw = RAW[name] || RAW[alt] || RAW[ALIAS[name]] || RAW[alt.replace(/ (Jr|Sr|II|III|IV)$/, '')];
   let out = null;
   if (raw) {
     const [s, style, color, beard, ...flags] = raw.split(' ');
