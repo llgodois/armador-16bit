@@ -54,6 +54,8 @@ export default class PlayerModel {
     this.hangT = 0; // enterrada: pendurado no aro
     this.followT = 0; // finalização do arremesso (braço no alto)
     this.amp = 0; // intensidade suavizada da passada
+    this.fallT = 0; // ankle breaker: tempo no chão
+    this.body.rotation.order = 'YXZ'; // inclinar/tombar no referencial do corpo (depois de virar)
   }
 
   // Atualiza pose a partir do estado do jogador do jogo.
@@ -315,11 +317,37 @@ export default class PlayerModel {
         }
       }
     }
+    // rebote: pulando, as duas mãos vão na bola
+    if (s.reach && s.ballWorld && !s.hold && !s.shoot) {
+      qL = this.aimWorld(L, s.ballWorld);
+      qR = this.aimWorld(R, s.ballWorld);
+      eL = eR = -0.15;
+      fast = true;
+    }
     const ka = k(fast ? 30 : 16);
     L.sh.quaternion.slerp(qL, ka);
     R.sh.quaternion.slerp(qR, ka);
     L.elbow.rotation.x = approach(L.elbow.rotation.x, eL, ka);
     R.elbow.rotation.x = approach(R.elbow.rotation.x, eR, ka);
+
+    // ---------------------------------------------------------------- ankle breaker: cai sentado e levanta
+    if (s.fallStart) {
+      this.fallT = s.fallStart;
+      this.fallMax = s.fallStart;
+    }
+    this.fallT = Math.max(0, (this.fallT || 0) - dt);
+    const fk = this.fallT > 0 ? Math.min(1, this.fallT / 0.25, (this.fallMax - this.fallT) / 0.1) : 0;
+    this.body.rotation.x = -1.15 * fk; // tomba para trás
+    if (fk > 0) {
+      this.root.position.y -= 9 * fk * this.root.scale.y; // senta no chão (a raiz é reposta a cada quadro)
+      this.body.rotation.z *= 1 - fk; // no chão, sem balançar
+      for (const leg of this.legs) {
+        leg.hip.rotation.x += (-1.35 - leg.hip.rotation.x) * fk; // pernas para a frente
+        leg.knee.rotation.x += (0.35 - leg.knee.rotation.x) * fk;
+      }
+      L.sh.quaternion.slerp(eulerQ(0.9, 0, -0.5), fk); // mãos para trás, apoiando no chão
+      R.sh.quaternion.slerp(eulerQ(0.9, 0, 0.5), fk);
+    }
     this.root.updateMatrixWorld(true);
   }
 

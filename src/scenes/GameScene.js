@@ -24,7 +24,10 @@ import OffenseAI from '../ai/OffenseAI.js';
 import { BASE_SLOTS, SLOTS, createPlay, PLAY_LIBRARY, playbookFor, PLAYS_PER_PAGE } from '../plays/index.js';
 import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
-import { onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound } from '../game/mech64.js';
+import {
+  onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut,
+} from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
   toWorld as toWorldDir,
@@ -2105,6 +2108,10 @@ export default class GameScene extends Phaser.Scene {
     }
     // falta de ataque: parado (de pé) no caminho de quem infiltra
     this.checkCharge(u, handler, moving, dt);
+    // (64) se mexendo no caminho dele: a falta pode ser sua
+    if (this.v64) blockingFoul(this, u, handler, moving);
+    // (64) pulando no rebote, J dá um tapinha para um companheiro
+    if (this.v64 && this.btn.J.just && tipOut(this, u)) return;
 
     // J: pede dobra de marcação em quem está com a bola
     if (this.btn.J.just && handler && !this.defenseAI.double) {
@@ -2166,7 +2173,7 @@ export default class GameScene extends Phaser.Scene {
       } else if (shooting || !handler || ball.state === 'shot') {
         this.userJumpT = 0.4;
         u.setPose('shoot', 0.3);
-        u.lift = 5;
+        u.lift = this.v64 && ball.state === 'loose' ? 8 : 5; // (64) pulo de rebote mais alto
       } else if (!this.inbound) {
         u.reachT = 0.14;
         const d = u.distTo(handler);
@@ -2178,7 +2185,8 @@ export default class GameScene extends Phaser.Scene {
           const ballSide = Math.sign(ball.x - handler.x) === Math.sign(u.x - handler.x) ? 1.35 : 1;
           const exposed = (handler.sprinting || Math.hypot(hv.x, hv.y) > 85 ? 1.4 : 1) * (handler.crossTimer > 0 ? 1.5 : 1) * ballSide;
           const dbl = this.isDoubled(handler) ? 1.4 : 1;
-          const chance = USER_DEFENSE.stealChance * u.skills.defense * u.skills.stealMult * dbl * exposed * (1.15 - d / 60);
+          const timing = this.v64 ? stealTiming(this, u, handler) : 1; // (64) bola exposta na hora certa
+          const chance = USER_DEFENSE.stealChance * u.skills.defense * u.skills.stealMult * dbl * exposed * timing * (1.15 - d / 60);
           if (Math.random() < chance) {
             this.stats.stl++;
             this.gradeAdd(GRADE.steal);
@@ -2492,6 +2500,7 @@ export default class GameScene extends Phaser.Scene {
 
   // Contestação: distância do defensor mais próximo + diferença de altura.
   contestFactor(shooter, openDist, minFactor) {
+    if (this.v64) return handContest(this, shooter, openDist, minFactor); // (64) a mão do defensor conta
     const { d, dist } = this.nearestDefender(shooter);
     let f = clamp(dist / openDist, minFactor, 1);
     if (d && dist < openDist) f *= clamp(1 - (d.cm - shooter.cm) * HEIGHT.contestPerCm, 0.85, 1.12);
@@ -2500,7 +2509,7 @@ export default class GameScene extends Phaser.Scene {
 
   shotMods(shooter, chance) {
     if (this.userOnDefense && this.user.handsT > this.time.now && Math.hypot(this.user.x - shooter.x, this.user.y - shooter.y) < 30) {
-      chance *= 0.82;
+      if (!this.v64) chance *= 0.82; // (no 64 a mão alta já entra na contestação pela mão)
       if (!shooter.contestShown || this.time.now - shooter.contestShown > 500) {
         shooter.contestShown = this.time.now;
         this.floatText(this.user.x, this.user.y - this.user.headY - 16, 'CONTESTOU!', 0x6dff6d);
@@ -2930,7 +2939,13 @@ export default class GameScene extends Phaser.Scene {
 
   // Até que altura o jogador alcança a bola no pulo (rebote no ar): altura + rebote.
   reachZ(p) {
-    return BALL.pickupMaxZ + REBOUND.jumpReach + (p.cm - HEIGHT.baseCm) * REBOUND.reachPerCm + (p.skills.rebounding - 1) * 20;
+    const base = BALL.pickupMaxZ + REBOUND.jumpReach + (p.cm - HEIGHT.baseCm) * REBOUND.reachPerCm + (p.skills.rebounding - 1) * 20;
+    return this.v64 ? reachZ64(this, p, base) : base; // (64) você só alcança alto pulando na hora (X)
+  }
+
+  // (64) a bola está exposta para o seu roubo agora? (o 3D faz a bola brilhar)
+  stealCueOn() {
+    return !!this.v64 && stealCue(this);
   }
 
   // Onde a bola solta vai estar na altura das mãos (os rebotes miram aí, não na bola).
@@ -2952,7 +2967,7 @@ export default class GameScene extends Phaser.Scene {
     let best = null;
     let bd = Infinity;
     for (const p of this.all) {
-      if (p.stun > 0) continue;
+      if (p.stun > 0 || p.noPickUntil > this.time.now) continue; // (64) quem deu tapinha espera um instante
       if (b.z > this.reachZ(p)) continue;
       const d = Math.hypot(p.x - b.x, p.y - b.y);
       const radius = BALL.pickupRadius * Math.sqrt(p.skills.rebounding) + (b.z > BALL.pickupMaxZ ? REBOUND.airRadius : 0) + (p.diveT > 0 ? 7 : 0) + (p.boxT > this.time.now ? 4 : 0);

@@ -48,6 +48,15 @@ function addLights(s) {
   s.add(sun, sun.target);
   return sun;
 }
+// Ankle breaker: o jogo marca "stun" no defensor que caiu no drible (0,68–0,85 s). Fintas e
+// contato dão stun menor (≤ 0,5) e não derrubam. Devolve a duração da queda quando ela começa.
+function fallStart(m, p, replay) {
+  const st = p.stun || 0;
+  const started = !replay && st >= 0.6 && (m.prevStun || 0) <= 0.05 && (p.lift || 0) < 1;
+  m.prevStun = st;
+  return started ? st : 0;
+}
+
 // ponte aérea: quem vai receber sobe para pegar a bola no ar (e enterra)
 function alleyTakeoff(b, p) {
   if (b.state !== 'pass' || !b.wasLob || b.passTo !== p) return null;
@@ -272,7 +281,7 @@ export default class World3D {
           this.dribbleBall = ballWorld;
         }
       }
-      if (p.lunge > 0 && !replay) ballWorld = this.ballMesh.position.clone();
+      if ((p.lunge > 0 || (p === g.user && g.userJumpT > 0)) && !replay) ballWorld = this.ballMesh.position.clone();
       m.update(
         {
           x,
@@ -302,6 +311,10 @@ export default class World3D {
           post: !replay && holding && !!p.post,
           bump: !replay && now - (p.bumpAt ?? -1e9) < 280,
           jab: !replay && now - (p.jabAt ?? -1e9) < 220 ? p.jabSide || 1 : 0,
+          // (64) ankle breaker: o desequilíbrio forte (drible que quebra) derruba no chão
+          fallStart: fallStart(m, p, replay),
+          // rebote: você pulando (X) com a bola no ar -> as mãos vão nela
+          reach: !replay && p === g.user && g.userJumpT > 0 && (b.state === 'loose' || b.state === 'shot'),
         },
         dt,
         time,
@@ -403,6 +416,9 @@ export default class World3D {
     this.prevBallState = replay ? 'replay' : b.state;
 
     this.ballMesh.visible = true;
+    // (64) roubo na hora certa: a bola brilha quando está exposta para você
+    const cue = !replay && g.stealCueOn && g.stealCueOn();
+    this.ballMesh.material.emissive.setHex(cue ? 0x6a3a00 : 0x000000);
     this.ballPhysics(new THREE.Vector3(x, Y, toZ(y)), b, dt);
 
     // rede balança no "chuá"; aro treme quando a bola bate; tudo acende verde na cesta

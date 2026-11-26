@@ -8,8 +8,8 @@
 //  - janela do verde que reage ao contexto (defensor perto, gás, arremesso em movimento)
 //  - tapinha / enterrada no rebote ofensivo
 // =====================================================================
-import { SHOT, STAMINA, PLAYER } from '../config.js';
-import { clamp, distToBasket } from '../utils/math.js';
+import { SHOT, STAMINA, PLAYER, USER_DEFENSE, REBOUND } from '../config.js';
+import { clamp, distToBasket, courtDist } from '../utils/math.js';
 import { sfx } from '../audio/sfx.js';
 
 const TRIPLE_TIME = 1.4; // segundos com a bola na mão antes de começar a quicar sozinho
@@ -150,6 +150,15 @@ export function userOffense64(g, u, hasBall, ix, iy, moving, dt) {
       u.post = false;
       u.lookAlways = false;
     }
+    // rebote ofensivo: X pula no tempo certo; pulando, A dá um tapinha para um companheiro
+    const b = g.ball;
+    if (b.state === 'loose' || b.state === 'shot') {
+      if (g.btn.K.just) {
+        reboundJump(g, u);
+        return true;
+      }
+      if (g.btn.J.just && tipOut(g, u)) return true;
+    }
     return false;
   }
 
@@ -256,6 +265,8 @@ export function driveContact(g, u, dt) {
     const atk = u.skills.finishing + (u.cm - 195) * 0.01 + (u.sprinting ? 0.15 : 0);
     const def = d.skills.defense + (d.cm - 195) * 0.01 + (set ? 0.25 : 0);
     u.bumpAt = d.bumpAt = g.time.now;
+    // em sprint contra defensor plantado na frente (entre você e a cesta): pode ser falta de ataque
+    if (set && u.sprinting && courtDist(d, g.basket) < courtDist(u, g.basket) && Math.random() < 0.2 * d.skills.defense) return offensiveFoul(g, u, d);
     g.floatText((u.x + d.x) / 2, Math.min(u.y, d.y) - 30, 'CONTATO', 0xffffff);
     sfx.play('bounce', 0.5);
     if (Math.random() * 0.5 + atk - def > 0.25) {
@@ -283,3 +294,96 @@ export function windowMult(g, u) {
 }
 
 export const baseWindow = (u) => SHOT.perfectWindow * u.skills.perfectWindow;
+
+// =====================================================================
+//  DEFESA E REBOTE (leva 3)
+// =====================================================================
+
+// Contestação pela MÃO: colado de mão alta (ou pulando) contesta muito; colado de mão baixa, pouco.
+export function handContest(g, shooter, openDist, minFactor) {
+  const { d, dist } = g.nearestDefender(shooter);
+  const f = clamp(dist / openDist, minFactor, 1);
+  if (!d || dist >= openDist) return f;
+  const u = g.user;
+  // você: mão alta (Y / analógico D para cima) ou pulo (X); IA: levanta a mão quando chega perto
+  const up = d === u ? u.handsT > g.time.now || g.userJumpT > 0 || u.pose === 'shoot' : dist < 22 && d.stun <= 0;
+  const tall = (d.cm - shooter.cm) * 0.006;
+  if (up) return clamp(f * clamp(0.8 + (dist / openDist) * 0.2 - tall, 0.6, 1), minFactor * 0.85, 1);
+  return Math.min(1, f * 1.15 + 0.05); // mão baixa: só o corpo atrapalha
+}
+
+// Roubo na HORA CERTA: a bola está exposta quando desce do lado em que você está.
+export function stealTiming(g, u, h) {
+  const b = g.ball;
+  if (b.state !== 'held' || b.holder !== h) return 1;
+  const mySide = Math.hypot(b.x - u.x, b.y - u.y) < Math.hypot(h.x - u.x, h.y - u.y);
+  const low = b.z < 7; // fora da mão (descendo / no chão)
+  if (mySide && low) return 1.8;
+  if (!low) return 0.55; // bola na mão: quase impossível
+  return 1;
+}
+
+// Dica visual no 3D: a bola brilha quando dá para roubar agora
+export function stealCue(g) {
+  const u = g.user;
+  const b = g.ball;
+  if (!g.userOnDefense || b.state !== 'held' || !b.holder || b.holder.team === u.team) return false;
+  if (u.distTo(b.holder) > USER_DEFENSE.stealRange) return false;
+  return stealTiming(g, u, b.holder) > 1.5;
+}
+
+// Você se mexendo ao trombar com quem infiltra: falta de bloqueio (a falta é sua)
+export function blockingFoul(g, u, h, moving) {
+  if (!moving || !h || !h.drive || (g.blockFoulCd || 0) > g.time.now) return;
+  if (h.distTo(u) > 11 || courtDist(u, g.basket) > courtDist(h, g.basket)) return;
+  g.blockFoulCd = g.time.now + 2500;
+  u.bumpAt = h.bumpAt = g.time.now;
+  g.maybeReachFoul(u, h); // ~30%: falta sua
+}
+
+// Infiltração em sprint contra defensor da IA plantado na frente: pode ser falta de ataque
+function offensiveFoul(g, u, d) {
+  sfx.play('whistle');
+  g.floatText(u.x, u.y - u.headY - 14, 'FALTA DE ATAQUE', 0xff7b6b);
+  if (u === g.pg) {
+    g.stats.to++;
+    g.gradeAdd(-3);
+  }
+  g.turnover(d, 'Falta de ataque', 0xff7b6b);
+}
+
+// ---- rebote: X pula (o alcance vem do tempo do pulo); pulando, A dá um tapinha para um companheiro
+export function reboundJump(g, u) {
+  if (g.userJumpT > 0) return;
+  g.userJumpT = 0.45;
+  u.lift = 8;
+  u.setPose('shoot', 0.35);
+}
+
+// Alcance do rebote: no 64 o SEU jogador só alcança alto se pular na hora (a IA continua igual)
+export function reachZ64(g, p, base) {
+  if (p !== g.user) return base;
+  return base - REBOUND.jumpReach + (g.userJumpT > 0 ? REBOUND.jumpReach + 8 : 0);
+}
+
+export function tipOut(g, u) {
+  const b = g.ball;
+  if (b.state !== 'loose' || g.userJumpT <= 0) return false;
+  if (Math.hypot(b.x - u.x, b.y - u.y) > 14 || b.z > g.reachZ(u) + 4) return false;
+  const mates = (u.team === 'home' ? g.home : g.away).filter((p) => p !== u);
+  let best = null;
+  let bd = Infinity;
+  for (const m of mates) {
+    const d = Math.hypot(m.x - u.x, m.y - u.y);
+    if (d < bd) [bd, best] = [d, m];
+  }
+  if (!best) return false;
+  const dx = (best.x - b.x) / (bd || 1);
+  const dy = (best.y - b.y) / (bd || 1);
+  b.loose(dx * 120, dy * 120, 30);
+  b.lastTouch = u.team;
+  u.noPickUntil = g.time.now + 350; // quem deu o tapinha não pega de volta na hora
+  g.floatText(u.x, u.y - u.headY - 14, 'TAPINHA', 0x6fa0ff);
+  sfx.play('bounce', 0.6);
+  return true;
+}
