@@ -315,13 +315,33 @@ export default class World3D {
           const dm = p.protect && g.defenderOf(p);
           if (dm) side = (dm.x - x) * Math.cos(yaw) - (dm.y - y) * Y_SCALE * Math.sin(yaw) > 0 ? -1 : 1;
           const ps = m.heightUnits / SIZE;
-          const lx = side * 5.5 * ps; // para o lado (mão do drible)
-          const lz = 3.2 * ps; // um pouco à frente
+          let lx = side * 5.5 * ps; // para o lado (mão do drible)
+          let lz = 3.2 * ps; // um pouco à frente
+          let bh = Math.max(0, b.z - 2) * 1.05 * ps;
+          // (64) entre as pernas / atrás das costas / snatch back: a bola cruza por baixo ou por trás
+          const dmv = p.dribMove;
+          const k = dmv ? (now - dmv.t0) / dmv.dur : 1;
+          if (k >= 0 && k < 1) {
+            const arc = Math.sin(Math.PI * k);
+            const from = -side; // vem da mão de antes
+            const mid = from + (side - from) * (k * k * (3 - 2 * k));
+            if (dmv.kind === 'legs') {
+              lx = mid * 5.5 * ps;
+              lz = 3.2 * ps * (1 - arc); // passa no meio das pernas
+              bh = Math.min(bh, 4 * ps) * (1 - 0.6 * arc);
+            } else if (dmv.kind === 'behind') {
+              lx = mid * 5.5 * ps;
+              lz = 3.2 * ps - 8.5 * ps * arc; // por trás do quadril
+              bh = Math.max(bh * (1 - arc), 9 * ps * arc);
+            } else {
+              lz = 3.2 * ps + 3 * ps * arc; // estica o braço e puxa a bola de volta
+            }
+          }
           dribble = { side: side >= 0 ? 1 : -1, z: b.z };
           // altura do quique proporcional ao tamanho do jogador (chão -> cintura)
           ballWorld = new THREE.Vector3(
             x + lx * Math.cos(yaw) + lz * Math.sin(yaw),
-            Math.max(0, b.z - 2) * 1.05 * ps + BALL_R,
+            bh + BALL_R,
             toZ(y) - lx * Math.sin(yaw) + lz * Math.cos(yaw),
           );
           this.dribbleBall = ballWorld;

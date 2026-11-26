@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -1038,8 +1038,18 @@ export default class GameScene extends Phaser.Scene {
     const toward = (fx * bx + fy * by) / bl;
     if (toward > 0.6 && isLayupZone(u, this.dir) && !this.inbound) return this.startLayup(u); // + RT segurado: enterrada
     if (u.crossCooldown > 0 || this.stamina < STAMINA.crossCost * 0.5) return;
-    // diagonal para baixo na tela, ou para longe da cesta: step-back
-    if (toward < -0.6 || sm.sy > 0.4) return this.dribbleStepBack(u, -bx / bl, -by / bl);
+    const moving = Math.hypot(ix || 0, iy || 0) > 0.2;
+    const sprint = !!(this.btn.SHIFT && this.btn.SHIFT.isDown);
+    // diagonal para baixo na tela, ou para longe da cesta: step-back (correndo com RT: snatch back)
+    if (toward < -0.6 || sm.sy > 0.4) {
+      if (sprint && moving) return dribble64(this, u, 'snatch', ix, iy);
+      return this.dribbleStepBack(u, -bx / bl, -by / bl);
+    }
+    if (toward <= 0.6) {
+      // para o lado: parado = entre as pernas (size-up) · correndo com RT = atrás das costas
+      if (!moving) return dribble64(this, u, 'legs', ix, iy);
+      if (sprint) return dribble64(this, u, 'behind', ix, iy);
+    }
     this.lastL = -1e9; // um toque só (não vira giro)
     this.dribbleMove(fx, fy, true); // para a cesta = hesitação; para o lado = crossover
   }

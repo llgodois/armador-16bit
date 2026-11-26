@@ -615,3 +615,57 @@ export function tipOut(g, u) {
   sfx.play('bounce', 0.6);
   return true;
 }
+
+// ------------------------------------------------------------------ dribles novos (analógico direito)
+// Combo: qualquer movimento logo depois de outro (até 0,9 s) desequilibra mais, até x4.
+function comboStep(g, u) {
+  const now = g.time.now;
+  g.combo = now - (g.lastCross || 0) < 900 ? (g.combo || 1) + 1 : 1;
+  g.lastCross = now;
+  const size = g.sizeUpT > now ? 1.5 : 1;
+  if (g.combo >= 2) g.floatText(u.x, u.y - u.headY - 28, `COMBO x${g.combo}`, 0x3ad6ff);
+  return (1 + 0.35 * Math.min(3, g.combo - 1)) * size;
+}
+
+const MOVE_TIME = { legs: 0.26, behind: 0.3, snatch: 0.34 };
+
+// kind: 'legs' (entre as pernas, parado: size-up que muda de mão) · 'behind' (atrás das costas,
+// correndo: muda de mão sem perder velocidade) · 'snatch' (snatch back: puxa a bola e recua forte)
+export function dribble64(g, u, kind, ix, iy) {
+  const b = dirTo(u, g.basket);
+  const ball = g.ball;
+  u.dribMove = { kind, t0: g.time.now, dur: MOVE_TIME[kind] * 1000 };
+  if (kind === 'legs') {
+    ball.side *= -1;
+    u.crossDir = { x: -b.y * ball.side * 0.4, y: b.x * ball.side * 0.4 };
+    u.crossTimer = 0.14;
+    u.crossCooldown = 0.32;
+    g.sizeUpT = g.time.now + 1300;
+    g.stamina = Math.max(0, g.stamina - STAMINA.crossCost * 0.45);
+    g.floatText(u.x, u.y - u.headY - 18, 'ENTRE AS PERNAS', 0x6fa0ff);
+    sfx.play('bounce', 0.7);
+    return g.ankleCheck(0.55 * comboStep(g, u), 'BALANCOU!');
+  }
+  if (kind === 'behind') {
+    ball.side *= -1;
+    const l = Math.hypot(ix, iy) || 1;
+    const dx = ix / l + -iy / l * ball.side * 0.45;
+    const dy = iy / l + ix / l * ball.side * 0.45;
+    const dl = Math.hypot(dx, dy) || 1;
+    u.crossDir = { x: dx / dl, y: dy / dl };
+    u.crossTimer = 0.28;
+    u.crossCooldown = 0.45;
+    g.stamina = Math.max(0, g.stamina - STAMINA.crossCost * 1.1);
+    g.floatText(u.x, u.y - u.headY - 18, 'ATRAS DAS COSTAS', 0x6fa0ff);
+    sfx.play('cross');
+    return g.ankleCheck(1.0 * comboStep(g, u), 'QUEBROU!');
+  }
+  // snatch back: recuo longo e firme, abre espaço para o arremesso
+  u.crossDir = { x: -b.x, y: -b.y };
+  u.crossTimer = 0.32;
+  u.crossCooldown = 0.6;
+  g.stamina = Math.max(0, g.stamina - STAMINA.crossCost * 1.2);
+  g.floatText(u.x, u.y - u.headY - 18, 'SNATCH BACK', 0x6fa0ff);
+  sfx.play('cross');
+  g.ankleCheck(0.75 * comboStep(g, u), 'RECUOU!');
+}
