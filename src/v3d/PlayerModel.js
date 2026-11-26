@@ -146,7 +146,13 @@ export default class PlayerModel {
 
     // ---------------------------------------------------------------- pernas
     const land = this.landT > 0 ? this.landT / 0.18 : 0;
-    const bend = (s.defending && !air ? 0.75 : 0) + dip * 0.9 + land * 0.8 + (gait === 'shuffle' ? 0.35 : 0);
+    const bend =
+      (s.defending && !air ? 0.75 : 0) +
+      dip * 0.9 +
+      land * 0.8 +
+      (gait === 'shuffle' ? 0.35 : 0) +
+      (s.triple && !air ? 0.35 : 0) + // ameaça tripla: base baixa
+      (s.post && !air ? 0.6 : 0); // de costas: bem agachado
     const kl = k(26);
     for (const [i, leg] of this.legs.entries()) {
       const ph = this.phase + (i ? Math.PI : 0);
@@ -180,6 +186,12 @@ export default class PlayerModel {
         // o joelho dobra quando a perna volta para frente (fase de recuperação)
         kx = Math.max(0, -Math.cos(ph)) * (0.5 + 0.9 * A) * (gait === 'run' ? 1 : 0) + bend + 0.08;
       }
+      // jab step: a perna do lado do jab avança um passo curto
+      if (s.jab && !air && i === (s.jab > 0 ? 1 : 0)) {
+        hx = -0.75;
+        kx = 0.45;
+      }
+      if (s.post && !air) hz = (i ? 1 : -1) * 0.22; // base larga de costas
       leg.hip.rotation.x = approach(leg.hip.rotation.x, hx, kl);
       leg.knee.rotation.x = approach(leg.knee.rotation.x, kx, kl);
       leg.hip.rotation.z = approach(leg.hip.rotation.z, hz, kl);
@@ -196,7 +208,15 @@ export default class PlayerModel {
     // inclina para dentro da curva; balança se desequilibrado
     const roll = -clamp(yawRate * 0.045, -0.3, 0.3) * clamp(spd / 60, 0, 1);
     this.body.rotation.z = s.stun > 0 ? Math.sin(time * 0.03) * 0.25 : approach(this.body.rotation.z, roll, k(8));
-    const lean = (gait === 'run' ? 0.12 + 0.18 * A + (sprint ? 0.12 : 0) : 0) * (air ? 0.3 : 1) + (s.defending ? 0.22 : 0) + (s.lunge > 0 ? 0.45 : 0) + dip * 0.15 + (gait === 'back' ? -0.08 : 0);
+    const lean =
+      (gait === 'run' ? 0.12 + 0.18 * A + (sprint ? 0.12 : 0) : 0) * (air ? 0.3 : 1) +
+      (s.defending ? 0.22 : 0) +
+      (s.lunge > 0 ? 0.45 : 0) +
+      dip * 0.15 +
+      (gait === 'back' ? -0.08 : 0) +
+      (s.triple ? 0.18 : 0) +
+      (s.post ? 0.35 : 0) +
+      (s.bump ? -0.45 : 0); // contato: o tronco vai para trás
     this.torso.rotation.x = approach(this.torso.rotation.x, lean, k(14));
     this.torso.scale.y = 1 + (gait === 'idle' ? Math.sin(time / 650) * 0.012 : 0); // respiração
     this.head.rotation.x = -this.torso.rotation.x * 0.6; // a cabeça compensa: olha para frente
@@ -226,11 +246,19 @@ export default class PlayerModel {
       }
       fast = true;
     } else if (this.finish === 'layup' && air && s.rim) {
-      // bandeja: braço estica até o aro, o outro protege
-      qR = this.aimWorld(R, s.rim.clone().add(new THREE.Vector3(0, 2, 0)));
-      eR = -0.15;
-      qL = eulerQ(-1.0, 0, -0.55);
-      eL = -0.8;
+      // bandeja: o braço do lado do aro estica até ele (vindo pela esquerda, mão esquerda); o outro protege
+      const leftSide = this.torso.worldToLocal(s.rim.clone()).x < 0;
+      const qReach = this.aimWorld(leftSide ? L : R, s.rim.clone().add(new THREE.Vector3(0, 2, 0)));
+      const qGuard = eulerQ(-1.0, 0, leftSide ? 0.55 : -0.55);
+      [qL, qR] = leftSide ? [qReach, qGuard] : [qGuard, qReach];
+      [eL, eR] = leftSide ? [-0.15, -0.8] : [-0.8, -0.15];
+      fast = true;
+    } else if (s.post) {
+      // de costas: braço de dentro segura o marcador (para trás), o de fora protege a bola
+      qL = this.aimLocal(L, -6, 5, -9);
+      eL = -0.35;
+      qR = this.aimLocal(R, 6, 3, 5);
+      eR = -0.8;
       fast = true;
     } else if (s.shoot) {
       // as duas mãos juntas acima da cabeça

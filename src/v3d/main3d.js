@@ -77,6 +77,20 @@ game.events.once('ready', () => {
       /* ignore */
     }
   };
+  // medidor do arremesso: 'barra' (padrão) ou 'pulo' (sem barra: solte no topo do pulo)
+  try {
+    gs.meterMode = localStorage.getItem('meter3d') === 'pulo' ? 'pulo' : 'barra';
+  } catch {
+    gs.meterMode = 'barra';
+  }
+  gs.setMeterMode = (m) => {
+    gs.meterMode = m;
+    try {
+      localStorage.setItem('meter3d', m);
+    } catch {
+      /* ignore */
+    }
+  };
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyV' || !game.scene.isActive('Game')) return;
     const i = CAM_MODES.findIndex((c) => c.id === gs.camMode);

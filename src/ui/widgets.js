@@ -164,13 +164,14 @@ export function drawControls(scene, g, x, y, w, depth = 10, pad = false) {
           col: 1,
           rows: pad
             ? [
-                ['Analog. D', 'cross / hesita / giro'],
+                ['Analog. D', 'cross/hesita/giro/jab'],
                 ['Analog. D baixo', 'arremesso (segure)'],
                 ['Analog. D diag.', 'step-back'],
-                ['RT + X no aro', 'enterrada'],
+                ['RT+X aro / LT', 'enterrada / de costas'],
               ]
             : [
                 ['SHIFT + K aro', 'enterrada'],
+                ['Q no garrafao', 'de costas'],
                 ['V', 'trocar camera'],
               ],
         },

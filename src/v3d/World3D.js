@@ -48,6 +48,11 @@ function addLights(s) {
   s.add(sun, sun.target);
   return sun;
 }
+// ponte aérea: quem vai receber sobe para pegar a bola no ar (e enterra)
+function alleyTakeoff(b, p) {
+  if (b.state !== 'pass' || !b.wasLob || b.passTo !== p) return null;
+  return Math.hypot(b.x - p.x, b.y - p.y) < 50 ? 'dunk' : null;
+}
 const hexCss = (n) => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6);
 const tintOf = (img) => (img && img.isTinted ? img.tintTopLeft : 0xffffff);
 
@@ -197,6 +202,7 @@ export default class World3D {
     // aro da cesta atacada (bandeja e enterrada miram nele)
     const bk = g.basket || BASKET;
     const rim = new THREE.Vector3(bk.x, bk.rimZ * VS, toZ(bk.y));
+    const now = g.time.now;
     g.all.forEach((p, k) => {
       seen.add(p);
       let m = this.models.get(p);
@@ -245,7 +251,8 @@ export default class World3D {
         hold = true; // bola no peito enquanto recolhe
       }
       if (holding) {
-        if (b.z >= 18 || p.layupT > 0) hold = true; // passe/reposição ou passadas da bandeja: bola no peito
+        // passe/reposição, passadas da bandeja, ameaça tripla ou de costas: bola na mão
+        if (b.z >= 18 || p.layupT > 0 || p.triple > 0 || p.post) hold = true;
         else {
           // O 2D desloca a bola para o lado no eixo da TELA (não do corpo): virado de lado, ela ia
           // parar atrás dele. Aqui a bola fica ao lado e um pouco à frente do CORPO; o lado vem do
@@ -289,11 +296,21 @@ export default class World3D {
           rim,
           sprinting: !!p.sprinting,
           // últimas passadas da bandeja: já sai do chão (enterrada se você pediu com o sprint)
-          takeoff: !replay && p.layupT > 0 && p.layupT < 0.16 ? (p.wantDunk ? 'dunk' : 'layup') : null,
+          takeoff: !replay && p.layupT > 0 && p.layupT < 0.16 ? (p.wantDunk ? 'dunk' : 'layup') : alleyTakeoff(b, p),
+          // (64) ameaça tripla, de costas, contato e jab: poses próprias
+          triple: !replay && holding && p.triple > 0,
+          post: !replay && holding && !!p.post,
+          bump: !replay && now - (p.bumpAt ?? -1e9) < 280,
+          jab: !replay && now - (p.jabAt ?? -1e9) < 220 ? p.jabSide || 1 : 0,
         },
         dt,
         time,
       );
+      // de costas: a bola fica na mão de fora (a outra segura o marcador)
+      if (!replay && holding && p.post) {
+        this.handBall = m.handPos();
+        return;
+      }
       // enterrada: a bola fica na mão até chegar ao aro
       if (!replay && b.state === 'shot' && b.shot && b.shot.shooter === p && b.shot.kind === 'dunk') {
         const h = m.handPos();
@@ -332,9 +349,36 @@ export default class World3D {
       y = this.handBall.z / Y_SCALE;
     } else if (!replay && b.state === 'held' && this.dribbleBall) Y = this.dribbleBall.y;
 
+    // (visual) bola de TABELA: arremesso certo da diagonal às vezes beija a tabela antes de cair
+    const s = b.shot;
+    if (!replay && b.state === 'shot' && s && s.kind === 'jump' && s.made && b.basket) {
+      if (this.bankShotRef !== s) {
+        this.bankShotRef = s;
+        const ax = Math.abs(s.sx - s.tx);
+        const ay = Math.abs(s.sy - s.ty);
+        s.bank = ax > 25 && ax < 120 && ay > 8 && ay < 90 && Math.random() < 0.4;
+      }
+      if (s.bank && s.t > 0.7) {
+        const u = (s.t - 0.7) / 0.3;
+        const dir = b.basket.y > MID_Y ? -1 : 1; // cesta de cima: a tabela fica ao norte
+        const P0 = new THREE.Vector3(
+          s.sx + (s.tx - s.sx) * 0.7,
+          (s.sz + (b.basket.rimZ - s.sz) * 0.7 + s.arc * 4 * 0.7 * 0.3) * VS + BALL_R * 0.8,
+          toZ(s.sy + (s.ty - s.sy) * 0.7),
+        );
+        const board = new THREE.Vector3(s.tx + Math.sign(s.sx - s.tx) * 4, rimY + 8, toZ(b.basket.y - dir * 5));
+        const rimC = new THREE.Vector3(s.tx, rimY + BALL_R, toZ(s.ty));
+        const p = u < 0.55 ? P0.lerp(board, u / 0.55) : board.lerp(rimC, (u - 0.55) / 0.45);
+        x = p.x;
+        Y = p.y;
+        y = p.z / Y_SCALE;
+      }
+    }
+
     // cesta: a bola atravessa a rede devagar (no jogo ela cai rápido demais para ver)
     if (b.state === 'drop' && !replay) {
       if (this.prevBallState !== 'drop') {
+        if (s && s.bank) this.floatText(b.basket.x, b.basket.y - 30, 'TABELA!', 0x6fa0ff);
         this.dropT = 0;
         hoop.userData.swish = 0.55;
       }
@@ -534,14 +578,15 @@ export default class World3D {
       }
     }
 
-    // medidor de arremesso sobre a cabeça
+    // medidor de arremesso sobre a cabeça (modo PULO: sem barra, solte no topo do pulo)
     const u = g.user;
-    if (g.gathering && u) {
+    if (g.gathering && u && g.meterMode !== 'pulo') {
       const s = this.project(u.x, u.y, this.headOf(u) + 10);
       const W = 34;
       const x = s.x - W / 2;
       const y = s.y;
-      const win = SHOT.perfectWindow * u.skills.perfectWindow;
+      // janela verde do jogo (no 64 encolhe com defensor perto, gás baixo e arremesso em movimento)
+      const win = g.greenWindow ? g.greenWindow(u) : SHOT.perfectWindow * u.skills.perfectWindow;
       c.fillStyle = '#10101a';
       c.fillRect(x - 1, y - 1, W + 2, 7);
       c.fillStyle = '#3a3352';

@@ -24,6 +24,7 @@ import OffenseAI from '../ai/OffenseAI.js';
 import { BASE_SLOTS, SLOTS, createPlay, PLAY_LIBRARY, playbookFor, PLAYS_PER_PAGE } from '../plays/index.js';
 import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
+import { onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
   toWorld as toWorldDir,
@@ -791,7 +792,8 @@ export default class GameScene extends Phaser.Scene {
   updateVision(dt) {
     const u = this.user;
     const can = this.state === 'live' && !this.userOnDefense && this.ball.state === 'held' && this.ball.holder === u;
-    this.visionOn = can && this.btn.VISION.isDown && this.vision > 0;
+    // (no 64, LT/Q perto do garrafão é o jogo de costas, não a visão)
+    this.visionOn = can && this.btn.VISION.isDown && this.vision > 0 && !(this.v64 && (wantsPost(this) || this.gathering));
     // na carreira, o atributo VISAO deixa a barra durar mais e voltar mais rápido
     const vs = this.visionStat ? this.visionStat / 70 : 1;
     if (this.visionOn) this.vision = Math.max(0, this.vision - (VISION.drain / vs) * dt);
@@ -1470,6 +1472,8 @@ export default class GameScene extends Phaser.Scene {
     });
 
     if (u.layupT > 0) return;
+    // (só no 64) ameaça tripla, jogo de costas, tapinha no rebote
+    if (this.v64 && userOffense64(this, u, hasBall, ix, iy, moving, dt)) return;
 
     if (this.gathering) {
       if (!hasBall) {
@@ -1480,6 +1484,7 @@ export default class GameScene extends Phaser.Scene {
         // L durante o arremesso = step-back (ganha espaço, arremesso um pouco mais difícil)
         if (this.btn.L.just && !this.stepBack) {
           this.stepBack = 0.2;
+          this.stepBackUsed = true;
           const dx = u.x - this.basket.x;
           const dy = u.y - this.basket.y;
           const l = Math.hypot(dx, dy) || 1;
@@ -1489,7 +1494,7 @@ export default class GameScene extends Phaser.Scene {
         if (this.stepBack > 0) {
           this.stepBack -= dt;
           u.moveDir(u.stepDir.x, u.stepDir.y, u.speed * 2.2, dt * 3);
-        } else u.moveDir(0, 0, 0, dt * (this.gatherBrake || 3)); // 3 = freia na hora (o 3D usa menos: carrega o embalo)
+        } else u.moveDir(0, 0, 0, dt * (this.stepBackUsed ? 3 : this.gatherBrake || 3)); // 3 = freia na hora (o 3D usa menos: carrega o embalo; depois de step-back/fadeaway, freia firme)
         u.setPose('shoot', 0.1);
         u.lookAt = this.basket;
         this.regenStamina(dt);
@@ -1521,6 +1526,8 @@ export default class GameScene extends Phaser.Scene {
     if (hasBall && this.btn.K.just && u.crossTimer <= 0 && !this.inbound) {
       if (isLayupZone(u, this.dir)) return this.startLayup(u);
       this.gathering = true;
+      u.gatherSpeed = Math.hypot(u.body.velocity.x, u.body.velocity.y); // (64) arremesso em movimento: janela menor
+      this.stepBackUsed = false;
       this.meterValue = 0;
       this.stepBack = 0;
       this.jArmed = false;
@@ -1549,6 +1556,7 @@ export default class GameScene extends Phaser.Scene {
       const m = this.slideAround(u, ix, iy);
       u.moveDir(m.x, m.y, speed * m.k, dt);
     } else u.moveDir(0, 0, 0, dt);
+    if (this.v64 && hasBall) driveContact(this, u, dt); // (só no 64) contato na infiltração
     const aim = moving ? { x: ix, y: iy } : { x: u.facing.x, y: u.facing.y };
 
     // J segurado + L = passe QUICADO (mais difícil de interceptar)
@@ -1906,6 +1914,16 @@ export default class GameScene extends Phaser.Scene {
       this.floatText(from.x, from.y - from.headY - 20, 'DE PRIMEIRA', 0x6fa0ff);
     }
     if (opts.bounce) this.ball.bounce = true;
+    // (só no 64) passe à frente de quem está correndo; passe longo vira passe cruzado (alto, mais lento)
+    if (this.v64 && !opts.bounce && !this.ball.lob) {
+      const tv = to.body.velocity;
+      if (Math.hypot(tv.x, tv.y) > 45) this.ball.nextLead = { vx: tv.x, vy: tv.y };
+      if (Math.hypot(to.x - from.x, to.y - from.y) > 200) {
+        this.ball.nextSkip = true;
+        speed *= 0.9;
+        if (from === this.user) this.floatText(from.x, from.y - from.headY - 12, 'PASSE CRUZADO', 0x6fa0ff);
+      }
+    }
     const ic = this.defenseAI.rollIntercept(from, to, mult);
     this.ball.pass(from, to, ic ? ic.defender : null, ic ? ic.point : null, speed);
     from.pose = null;
@@ -2411,8 +2429,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------ arremesso
+  // Janela do verde. (só no 64, você, fora do lance livre) reage ao contexto: defensor perto, gás, em movimento.
+  greenWindow(u) {
+    const win = SHOT.perfectWindow * u.skills.perfectWindow;
+    return this.v64 && u === this.user && !this.ft ? win * windowMult(this, u) : win;
+  }
+
   timingQuality(v, shooter) {
-    const win = SHOT.perfectWindow * shooter.skills.perfectWindow;
+    const win = this.greenWindow(shooter);
     const off = Math.abs(v - SHOT.sweetSpot);
     if (off <= win) return 1;
     return clamp(1 - (off - win) / (SHOT.tolerance - win), 0, 1);
@@ -2707,6 +2731,7 @@ export default class GameScene extends Phaser.Scene {
       const from = b.passFrom;
       this.lastPass = { from, to, time: this.time.now };
       if (to === this.pg) this.userCatchAt = this.time.now;
+      if (this.v64 && to === this.user) onUserCatch(this, to); // (só no 64) ameaça tripla
       to.decideTimer = rand(OFFENSE.decideMin, OFFENSE.decideMax);
       to.catchShoot = this.nearestDefenderDist(to) >= OFFENSE.openDist + 6 && distToBasket(to, this.dir) < OFFENSE.shootRange;
       if (to.catchShoot) to.decideTimer = OFFENSE.catchAndShoot;
@@ -2956,6 +2981,7 @@ export default class GameScene extends Phaser.Scene {
       this.shotClock = Math.max(this.shotClock, GAME.offensiveReboundClock);
       this.passCount = 0;
       this.floatText(best.x, best.y - best.headY - 6, 'REBOTE OF.', best.team === 'home' ? 0x6dff6d : 0xff7b6b);
+      if (this.v64) onOffensiveRebound(this, best, b.z); // (só no 64) tapinha / enterrada no rebote
     }
   }
 
@@ -3046,7 +3072,7 @@ export default class GameScene extends Phaser.Scene {
     // perto do topo da tela (corner/linha de fundo) o placar tapava o medidor: desenha embaixo dos pés
     const above = Math.round(u.y - u.headY - 14);
     const y = above - this.cameras.main.scrollY < 40 ? Math.round(u.y + 6) : above;
-    const win = SHOT.perfectWindow * u.skills.perfectWindow;
+    const win = this.greenWindow(u);
     g.fillStyle(0x10101a).fillRect(x - 1, y - 1, W + 2, 6);
     g.fillStyle(0x3a3352).fillRect(x, y, W, 4);
     g.fillStyle(0x2e8b3a).fillRect(x + Math.round(W * (SHOT.sweetSpot - win)), y, Math.max(2, Math.round(W * win * 2)), 4);

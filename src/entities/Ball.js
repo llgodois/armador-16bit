@@ -57,6 +57,11 @@ export default class Ball extends Phaser.Events.EventEmitter {
     this.wasBounce = !!this.bounce && !this.wasLob;
     this.bounce = false;
     this.bounced = false;
+    // (só no 64) passe à frente do corredor / passe cruzado: a GameScene marca antes de passar
+    this.lead = this.nextLead || null;
+    this.skip = !!this.nextSkip && !this.wasLob;
+    this.nextLead = null;
+    this.nextSkip = false;
     this.pass0 = Math.hypot(to.x - this.x, to.y - this.y) || 1;
   }
 
@@ -181,10 +186,22 @@ export default class Ball extends Phaser.Events.EventEmitter {
       this.emit('caught', to);
       return;
     }
-    this.x += (dx / d) * step;
-    this.y += (dy / d) * step;
+    // passe à frente: mira onde o corredor VAI estar (no fim, ainda encontra a mão dele)
+    let ux = dx / d;
+    let uy = dy / d;
+    if (this.lead && d > 18) {
+      const tt = (d / (this.passSpeed || PASS.speed)) * 0.8;
+      const lx = to.x + this.lead.vx * tt - this.x;
+      const ly = to.y + this.lead.vy * tt - this.y;
+      const ll = Math.hypot(lx, ly) || 1;
+      ux = lx / ll;
+      uy = ly / ll;
+    }
+    this.x += ux * step;
+    this.y += uy * step;
     const t = Math.min(1, 1 - d / this.pass0);
     if (this.wasLob) this.z = 14 + 26 * Math.sin(Math.PI * t);
+    else if (this.skip) this.z = 14 + 12 * Math.sin(Math.PI * t); // passe cruzado: por cima
     else if (this.wasBounce) {
       this.z = 12 * Math.abs(1 - 2 * t);
       if (!this.bounced && t >= 0.5) {
