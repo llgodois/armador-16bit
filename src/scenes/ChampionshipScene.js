@@ -4,6 +4,7 @@ import { teamById, teamHudColor, fmtHeight } from '../data/teams.js';
 import { schemeById } from '../data/defense.js';
 import { load, clear, opponentOf, userSeries, scoutOf, ROUND_NAMES } from '../data/championship.js';
 import { playerTexKey } from '../art/sprites.js';
+import { addPlayerArt } from '../ui/portrait.js';
 import PixelText from '../ui/PixelText.js';
 import { drawPanel } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
@@ -74,7 +75,8 @@ export default class ChampionshipScene extends Phaser.Scene {
       const gameN = s.winsA + s.winsB + 1;
       T(16, 158, `SCOUT: ${opp.name.toUpperCase()}  (GERAL ${sc.overall})`, { color: teamHudColor(opp) });
       T(W - 16, 158, `JOGO ${gameN}`, { origin: [1, 0], color: 0xffe14d });
-      const spr = this.add.sprite(36, 230, playerTexKey(opp.id, opp.players.indexOf(sc.star)), 0).setOrigin(0.5, 1).setScale(2);
+      const si = opp.players.indexOf(sc.star);
+      const spr = addPlayerArt(this, 36, 230, playerTexKey(opp.id, si), 2, { info: sc.star, colors: opp.colors, index: si });
       void spr;
       const lines = [
         `CRAQUE: ${sc.star.name} "${sc.star.nick}" ${fmtHeight(sc.star.cm)}`,

@@ -6,6 +6,7 @@ import { PLAY_LIBRARY } from '../plays/index.js';
 import { DEF_SCHEMES, schemeById } from '../data/defense.js';
 import { badgesOf, BADGES } from '../data/badges.js';
 import { generatePlayerTexture } from '../art/sprites.js';
+import { addPlayerArt } from '../ui/portrait.js';
 import {
   COLLEGE, ATTRS, loadCareer, saveCareer, clearCareer, newCareer, careerPG, startPro, nextYear, spendPoint, buildName,
 } from '../data/career.js';
@@ -50,7 +51,7 @@ export default class CareerScene extends Phaser.Scene {
     const key = `car_prev_${p.skin}_${p.hair}_${p.cm}_${team.id}`;
     if (!this.textures.exists(key)) generatePlayerTexture(this, key, team.colors, p.cm, p.skin, p.hair);
     if (this.prevSpr) this.prevSpr.destroy();
-    this.prevSpr = this.add.sprite(x, y, key, 0).setOrigin(0.5, 1).setScale(3);
+    this.prevSpr = addPlayerArt(this, x, y, key, 3, { info: { cm: p.cm, skin: p.skin, hair: p.hair, name: p.name }, colors: team.colors, index: 0 });
   }
 
   // ------------------------------------------------------------ criar jogador

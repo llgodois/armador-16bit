@@ -105,7 +105,7 @@ export default class World3D {
     this.ball = game.ball;
     const s = (this.scene = new THREE.Scene());
     this.sun = addLights(s);
-    this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark });
+    this.courtObj = buildCourt(s, { street: !!game.street, paint: game.homeTeam && game.homeTeam.colors.dark, home: game.street ? null : game.homeTeam });
     this.camId = null; // ginásio novo: reaplica a câmera (arquibancada escondida etc.)
 
     // bola
@@ -133,7 +133,21 @@ export default class World3D {
     this.scoreSeen = { ...(game.score || { home: 0, away: 0 }) };
     this.cheer = 0;
     this.netFlash = 0;
+    // reações: quem acertou comemora; quem errou leva as mãos à cabeça
+    const shooterModel = () => {
+      const s = this.ball && this.ball.shot;
+      return s && s.shooter ? this.models.get(s.shooter) : null;
+    };
     this.ball.on('scored', () => (this.netFlash = 0.6));
+    // (no "scored" o jogo já entregou a bola para a reposição; quem arremessou ainda está no "rimIn")
+    this.ball.on('rimIn', () => {
+      const m = shooterModel();
+      if (m) m.celebrate();
+    });
+    this.ball.on('rim', () => {
+      const m = shooterModel();
+      if (m) m.regret();
+    });
 
     const t = game.camTarget || game.pg;
     this.look.set(t.x, 12, toZ(t.y));
@@ -200,6 +214,11 @@ export default class World3D {
     this.syncRings(g, time);
     this.syncCamera(g, fdt);
     this.syncCrowd(g, fdt, time);
+    // telão: placar e cronômetro de posse
+    if (this.courtObj.jumbo) {
+      const sc = g.score || { home: 0, away: 0 };
+      this.courtObj.jumbo.draw(g.homeTeam.name, g.awayTeam.name, sc.home, sc.away, Math.ceil(g.shotClock ?? 24));
+    }
     this.renderer.render(this.scene, this.camera);
     this.drawOverlay(g, fdt, time);
   }
@@ -262,7 +281,9 @@ export default class World3D {
       const holding = !replay && b.state === 'held' && b.holder === p && p.pose !== 'shoot';
       let dribble = null;
       let hold = false;
-      let shoot = p.pose === 'shoot';
+      // defensor com a pose de "braços para cima" (toco, contestação, pulo) não está arremessando
+      const block = !replay && p.pose === 'shoot' && !!g.offSide && p.team !== g.offSide && b.holder !== p;
+      let shoot = p.pose === 'shoot' && !block;
       let ballWorld = null;
       // você segurando o arremesso: o medidor comanda o pulo (recolhe -> agacha -> sobe -> solta no alto)
       const gather = !replay && g.gathering && p === g.user && b.holder === p ? (g.meterValue || 0) / SHOT.sweetSpot : null;
@@ -292,7 +313,7 @@ export default class World3D {
           this.dribbleBall = ballWorld;
         }
       }
-      if ((p.lunge > 0 || (p === g.user && g.userJumpT > 0)) && !replay) ballWorld = this.ballMesh.position.clone();
+      if ((p.lunge > 0 || block || (p === g.user && g.userJumpT > 0)) && !replay) ballWorld = this.ballMesh.position.clone();
       m.update(
         {
           x,
@@ -326,6 +347,9 @@ export default class World3D {
           fallStart: fallStart(m, p, replay),
           // rebote: você pulando (X) com a bola no ar -> as mãos vão nela
           reach: !replay && p === g.user && g.userJumpT > 0 && (b.state === 'loose' || b.state === 'shot'),
+          block,
+          // a bola acabou de sair da mão dele num passe
+          passStart: !replay && b.state === 'pass' && this.prevBallState !== 'pass' && b.passFrom === p,
         },
         dt,
         time,
@@ -497,7 +521,71 @@ export default class World3D {
 
   // Câmera de "transmissão" atrás da linha de fundo de baixo, como no 16-bit:
   // segue o mesmo alvo da câmera 2D (entre você e a bola).
+  // Entrada da partida (só no 64): voo pelo ginásio (2,6 s) e um close em cada titular da casa.
+  introCamera(g, dt) {
+    const T = 7.6 - g.stateT;
+    const cz = toZ(MID_Y);
+    const k = dt > 0 ? 1 - Math.exp(-8 * dt) : 1;
+    let pos;
+    let look;
+    this.introCard = null;
+    if (T < 2.6) {
+      const a = -1.1 + T * 0.6;
+      pos = new THREE.Vector3(240 + Math.sin(a) * 470, 230 - T * 30, cz + Math.cos(a) * 470);
+      look = new THREE.Vector3(240, 30, cz);
+      if (!this.camPos || T < 0.1) this.camPos = pos.clone();
+    } else {
+      const i = Math.min(4, Math.floor((T - 2.6) / 0.9));
+      const p = g.home[i] || g.home[0];
+      const m = this.models.get(p);
+      const P = m.root.position;
+      // na diagonal (o marcador fica bem na frente dele e taparia a câmera)
+      const a = m.yaw - 0.75;
+      const fwd = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
+      pos = P.clone().add(fwd.multiplyScalar(58)).add(new THREE.Vector3(0, m.heightUnits * 0.8, 0));
+      look = P.clone().add(new THREE.Vector3(0, m.heightUnits * 0.62, 0));
+      this.introCard = { name: p.info.name, role: p.role, cm: p.info.cm, nick: p.info.nick, color: g.homeTeam.colors.jersey };
+    }
+    this.camPos.lerp(pos, T < 2.6 ? 1 : k);
+    this.look.lerp(look, T < 2.6 ? 1 : k);
+    this.camera.position.copy(this.camPos);
+    this.camera.lookAt(this.look);
+    this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
+    this.sun.target.position.copy(this.look);
+  }
+
+  // Replay de cinema: a cada replay um ângulo (atrás da cesta, girando em volta da bola, lateral baixa)
+  replayCamera(g, dt) {
+    if (this.replayRef !== g.replay) {
+      this.replayRef = g.replay;
+      this.replayShot = Math.floor(Math.random() * 3);
+      this.replayT = 0;
+      this.camPos = this.camera.position.clone();
+    }
+    this.replayT += dt;
+    const b = this.ballMesh.position;
+    const k = dt > 0 ? 1 - Math.exp(-4 * dt) : 1;
+    const bk = g.basket || BASKET;
+    const dir = bk.y > MID_Y ? -1 : 1;
+    let pos;
+    if (this.replayShot === 0) pos = new THREE.Vector3(bk.x + 20, 34, toZ(bk.y) - dir * 70); // atrás da cesta, baixo
+    else if (this.replayShot === 1) {
+      const a = this.replayT * 0.45;
+      pos = new THREE.Vector3(b.x + Math.sin(a) * 120, 52, b.z + Math.cos(a) * 120); // girando em volta
+    } else pos = new THREE.Vector3(b.x - 150, 30, b.z + 20); // lateral, bem baixo
+    this.camPos.lerp(pos, k);
+    this.look.lerp(new THREE.Vector3(b.x, Math.max(14, b.y * 0.8), b.z), k);
+    this.camera.position.copy(this.camPos);
+    this.camera.lookAt(this.look);
+    this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
+    this.sun.target.position.copy(this.look);
+  }
+
   syncCamera(g, dt) {
+    if (g.state === 'intro' && g.introLong && g.home) return this.introCamera(g, dt);
+    this.introCard = null;
+    if (g.state === 'replay' && g.replay && g.v64) return this.replayCamera(g, dt);
+    this.replayRef = null;
     const t = g.camTarget || g.user;
     const cam = CAM_MODES.find((c) => c.id === g.camMode) || CAM_MODES[0];
     g.camYaw = cam.yaw; // a GameScene gira o controle por esse ângulo
@@ -639,6 +727,33 @@ export default class World3D {
       c.globalAlpha = 1;
     }
     this.drawReplayInfo(g);
+    this.drawIntroCard();
+  }
+
+  // Apresentação dos titulares: faixa de TV no canto de baixo
+  drawIntroCard() {
+    const ic = this.introCard;
+    if (!ic) return;
+    const c = this.ctx;
+    const fs = Math.round(this.H / 14);
+    const x = Math.round(this.W * 0.06);
+    const y = Math.round(this.H * 0.62);
+    const w = Math.round(this.W * 0.42);
+    c.globalAlpha = 0.88;
+    c.fillStyle = '#0a1120';
+    c.fillRect(x, y, w, fs * 2.6);
+    c.globalAlpha = 1;
+    c.fillStyle = ic.color;
+    c.fillRect(x, y, Math.max(4, fs * 0.25), fs * 2.6);
+    c.textAlign = 'left';
+    c.textBaseline = 'top';
+    c.fillStyle = '#ffffff';
+    c.font = `800 ${fs}px "Barlow Condensed", sans-serif`;
+    c.fillText(String(ic.name).toUpperCase(), x + fs * 0.6, y + fs * 0.25);
+    c.fillStyle = '#ffe14d';
+    c.font = `600 ${Math.round(fs * 0.6)}px "Barlow Condensed", sans-serif`;
+    const pos = { PG: 'ARMADOR', SG: 'ALA-ARMADOR', SF: 'ALA', PF: 'ALA-PIVO', C: 'PIVO' }[ic.role] || ic.role;
+    c.fillText(`${pos}  ·  ${(ic.cm / 100).toFixed(2).replace('.', ',')} M${ic.nick ? `  ·  "${String(ic.nick).toUpperCase()}"` : ''}`, x + fs * 0.6, y + fs * 1.5);
   }
 
   // Rotas da jogada chamada, desenhadas NO CHÃO (projetadas em perspectiva).

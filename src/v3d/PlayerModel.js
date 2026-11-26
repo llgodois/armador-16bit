@@ -119,6 +119,10 @@ export default class PlayerModel {
     this.landT = Math.max(0, this.landT - dt);
     this.finishT = Math.max(0, this.finishT - dt);
     this.followT = Math.max(0, this.followT - dt);
+    if (s.passStart) this.passT = 0.3;
+    this.passT = Math.max(0, (this.passT || 0) - dt);
+    this.celebT = Math.max(0, (this.celebT || 0) - dt);
+    this.sadT = Math.max(0, (this.sadT || 0) - dt);
     if (this.finishT === 0 && this.jumpY === 0) this.finish = null;
     const liftY = Math.max(s.lift * VS, this.jumpY);
     this.root.position.set(s.x, liftY, s.z3);
@@ -264,11 +268,24 @@ export default class PlayerModel {
       qR = this.aimLocal(R, 6, 3, 5);
       eR = -0.8;
       fast = true;
+    } else if (s.block) {
+      // toco/contestação: um braço esticado na bola (ou bem alto), o outro acima da cabeça
+      qR = s.ballWorld ? this.aimWorld(R, s.ballWorld) : this.aimLocal(R, 2, 24, 4);
+      qL = this.aimLocal(L, -4, 21, 3);
+      eL = eR = -0.08;
+      fast = true;
     } else if (s.shoot) {
       // as duas mãos juntas acima da cabeça
       qL = this.aimLocal(L, 0.6, 21, 2.5);
       qR = this.aimLocal(R, -0.6, 21, 2.5);
       eL = eR = -0.35;
+      fast = true;
+    } else if (this.passT > 0) {
+      // passe de peito: as duas mãos empurram para a frente
+      const p = 1 - this.passT / 0.3; // 0 -> 1
+      qL = this.aimLocal(L, 1.2, 5, 6 + 8 * p);
+      qR = this.aimLocal(R, -1.2, 5, 6 + 8 * p);
+      eL = eR = -0.9 + 0.85 * p;
       fast = true;
     } else if (this.followT > 0) {
       // finalização: braço do arremesso fica no alto com o "punho" caído
@@ -282,6 +299,18 @@ export default class PlayerModel {
       qR = this.aimLocal(R, -1, 4, 8);
       eL = eR = -0.7;
       fast = true;
+    } else if (this.celebT > 0) {
+      // comemoração: soco no ar (braço sobe e desce), o outro solto
+      const pump = Math.abs(Math.sin(time / 110));
+      qR = this.aimLocal(R, 2, 14 + 8 * pump, 3);
+      eR = -0.2 - 0.9 * (1 - pump);
+      qL = eulerQ(-sw * 0.6, 0, -0.25);
+      eL = -0.7;
+    } else if (this.sadT > 0) {
+      // errou: mãos na cabeça
+      qL = this.aimLocal(L, 2.5, 13, 2);
+      qR = this.aimLocal(R, -2.5, 13, 2);
+      eL = eR = -1.7;
     } else if (s.defending) {
       // mãos ativas: uma alta (contestar o passe), outra baixa na bola; trocam devagar
       const hi = Math.sin(time / 260 + this.phase * 0.05) > 0;
@@ -359,6 +388,17 @@ export default class PlayerModel {
       R.sh.quaternion.slerp(eulerQ(0.9, 0, 0.5), fk);
     }
     this.root.updateMatrixWorld(true);
+  }
+
+  // Reações depois do arremesso (chamadas pela cena 3D quando a bola cai ou bate no aro)
+  celebrate() {
+    this.celebT = 1.4;
+    this.sadT = 0;
+  }
+
+  regret() {
+    this.sadT = 1.0;
+    this.celebT = 0;
   }
 
   // Rotação que aponta o braço (eixo -Y) para um ponto no espaço do tronco.

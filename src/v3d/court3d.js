@@ -11,7 +11,7 @@ const HS = 1.3; // tamanho do aro/tabela
 export const toZ = (y) => y * Y_SCALE;
 
 // ------------------------------------------------------------------ piso
-function courtTexture(paint = '#3355a8') {
+function courtTexture(paint = '#3355a8', home = null) {
   const S = 4; // pixels de textura por unidade
   const W = WORLD.W;
   const D = toZ(WORLD.H);
@@ -89,11 +89,45 @@ function courtTexture(paint = '#3355a8') {
   g.moveTo(X(COURT.left), Zp(MID_Y));
   g.lineTo(X(COURT.right), Zp(MID_Y));
   g.stroke();
-  g.fillStyle = paint;
+  // círculo central com o "logo" do time da casa (cor da camisa, nome na cor da faixa)
+  const cx = X(BASKET.x);
+  const cy = Zp(MID_Y);
+  g.fillStyle = home ? home.colors.jersey : paint;
   g.beginPath();
-  g.ellipse(X(BASKET.x), Zp(MID_Y), 34 * S, 34 * S, 0, 0, Math.PI * 2);
+  g.ellipse(cx, cy, 34 * S, 34 * S, 0, 0, Math.PI * 2);
   g.fill();
   g.stroke();
+  if (home) {
+    g.strokeStyle = home.colors.trim || '#ffffff';
+    g.lineWidth = 2.2 * S;
+    g.beginPath();
+    g.ellipse(cx, cy, 29 * S, 29 * S, 0, 0, Math.PI * 2);
+    g.stroke();
+    const name = String(home.name).toUpperCase();
+    g.save();
+    g.translate(cx, cy);
+    g.transform(1, 0, -0.18, 1, 0, 0); // itálico
+    g.font = `800 ${Math.min(26, 220 / name.length) * S}px "Barlow Condensed", Impact, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 1.6 * S;
+    g.strokeStyle = 'rgba(0,0,0,0.55)';
+    g.strokeText(name, 0, 2 * S);
+    g.fillStyle = home.colors.trim || '#ffffff';
+    g.fillText(name, 0, 2 * S);
+    g.restore();
+    // nome da cidade junto das duas linhas de fundo
+    g.font = `800 ${9 * S}px "Barlow Condensed", Impact, sans-serif`;
+    g.textAlign = 'center';
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    const city = String(home.city || '').toUpperCase();
+    g.fillText(city, cx, Zp(COURT.top) + 16 * S);
+    g.save();
+    g.translate(cx, Zp(COURT.bottom) - 16 * S);
+    g.rotate(Math.PI);
+    g.fillText(city, 0, 0);
+    g.restore();
+  }
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -165,7 +199,7 @@ function hoop(basket, dir) {
 }
 
 // ------------------------------------------------------------------ ginásio
-function arena() {
+function arena(home = null) {
   const g = new THREE.Group();
   const cx = WORLD.W / 2;
   const cz = toZ(MID_Y);
@@ -183,7 +217,14 @@ function arena() {
   const fans = [];
   let seed = 11;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const palette = [0xd84a3a, 0x3a6fd8, 0xf2c94c, 0xeeeeee, 0x2fa36b, 0x8e5bd8, 0x222222, 0xff8a3d];
+  let palette = [0xd84a3a, 0x3a6fd8, 0xf2c94c, 0xeeeeee, 0x2fa36b, 0x8e5bd8, 0x222222, 0xff8a3d];
+  // torcida da casa: metade vestindo as cores do time (camisa e faixa)
+  if (home) {
+    const hx = (s) => parseInt(String(s).slice(1), 16);
+    const j = hx(home.colors.jersey);
+    const t = hx(home.colors.trim || '#ffffff');
+    palette = [...palette, j, j, j, j, t, t, t, 0xeeeeee];
+  }
 
   const halfW = (COURT.right - COURT.left) / 2 + 60;
   const halfD = (toZ(COURT.bottom) - toZ(COURT.top)) / 2 + 60;
@@ -239,9 +280,14 @@ function arena() {
   return g;
 }
 
-export function buildCourt(scene3, { street = false, paint } = {}) {
-  const tex = courtTexture(paint);
-  const court = new THREE.Mesh(new THREE.PlaneGeometry(WORLD.W, toZ(WORLD.H)), new THREE.MeshLambertMaterial({ map: tex }));
+// home = time da casa ({ name, city, colors }): logo no centro, torcida e telão com as cores dele
+export function buildCourt(scene3, { street = false, paint, home = null } = {}) {
+  const tex = courtTexture(paint, home);
+  // piso envernizado: brilho dos refletores na madeira
+  const court = new THREE.Mesh(
+    new THREE.PlaneGeometry(WORLD.W, toZ(WORLD.H)),
+    new THREE.MeshPhongMaterial({ map: tex, shininess: 70, specular: 0x2a2a2a }),
+  );
   court.rotation.x = -Math.PI / 2;
   court.position.set(WORLD.W / 2, 0, toZ(WORLD.H) / 2);
   court.receiveShadow = true;
@@ -253,7 +299,85 @@ export function buildCourt(scene3, { street = false, paint } = {}) {
     hoops.bottom = hoop(BASKET_BOTTOM, -1);
     scene3.add(hoops.bottom);
   }
-  const ar = arena();
+  const ar = arena(home);
   scene3.add(ar);
-  return { court, hoops, arena: ar, dispose: () => tex.dispose() };
+  const jumbo = home ? jumbotron(home) : null;
+  if (jumbo) scene3.add(jumbo.group);
+  scene3.add(lightRigs());
+  return { court, hoops, arena: ar, jumbo, dispose: () => tex.dispose() };
+}
+
+// ------------------------------------------------------------------ telão sobre o centro da quadra
+function jumbotron(home) {
+  const group = new THREE.Group();
+  group.position.set(WORLD.W / 2, 205, toZ(MID_Y));
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(64, 34, 64), new THREE.MeshLambertMaterial({ color: 0x15151c }));
+  group.add(frame);
+  const cv = document.createElement('canvas');
+  cv.width = 512;
+  cv.height = 256;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshBasicMaterial({ map: tex });
+  for (let i = 0; i < 4; i++) {
+    const sc = new THREE.Mesh(new THREE.PlaneGeometry(58, 29), mat);
+    const a = (i * Math.PI) / 2;
+    sc.position.set(Math.sin(a) * 32.2, 0, Math.cos(a) * 32.2);
+    sc.rotation.y = a;
+    group.add(sc);
+  }
+  // cabos até o teto
+  for (const [x, z] of [[-26, -26], [26, -26], [-26, 26], [26, 26]]) {
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 160, 4), new THREE.MeshBasicMaterial({ color: 0x222228 }));
+    c.position.set(x, 97, z);
+    group.add(c);
+  }
+  let last = '';
+  const draw = (home2, away, sh, sa, clock) => {
+    const key = `${sh}|${sa}|${clock}`;
+    if (key === last) return;
+    last = key;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#07090f';
+    c.fillRect(0, 0, 512, 256);
+    c.fillStyle = home.colors.jersey;
+    c.fillRect(0, 0, 512, 10);
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = '800 46px "Barlow Condensed", Impact, sans-serif';
+    c.fillStyle = '#ffffff';
+    c.fillText(String(home2).toUpperCase().slice(0, 12), 128, 60);
+    c.fillText(String(away).toUpperCase().slice(0, 12), 384, 60);
+    c.font = '800 110px "Barlow Condensed", Impact, sans-serif';
+    c.fillStyle = '#ffe14d';
+    c.fillText(String(sh), 128, 160);
+    c.fillText(String(sa), 384, 160);
+    c.font = '800 54px "Barlow Condensed", Impact, sans-serif';
+    c.fillStyle = '#ff5a4d';
+    c.fillText(String(clock), 256, 160);
+    tex.needsUpdate = true;
+  };
+  return { group, draw };
+}
+
+// ------------------------------------------------------------------ refletores no alto
+function lightRigs() {
+  const g = new THREE.Group();
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff6dc });
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xfff2d0, transparent: true, opacity: 0.028, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const cz = toZ(MID_Y);
+  for (const x of [-30, 510]) {
+    for (const dz of [-260, 0, 260]) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 14), lampMat);
+      lamp.position.set(x, 240, cz + dz);
+      g.add(lamp);
+      // facho de luz descendo até a quadra (bem transparente)
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(70, 240, 16, 1, true), coneMat);
+      cone.position.set((x + 240) / 2, 120, cz + dz * 0.8);
+      cone.lookAt(240, 0, cz + dz * 0.6);
+      cone.rotateX(Math.PI / 2);
+      g.add(cone);
+    }
+  }
+  return g;
 }

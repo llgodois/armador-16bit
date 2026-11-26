@@ -267,6 +267,9 @@ export default class GameScene extends Phaser.Scene {
     this.ball.give(this.pg);
     this.state = 'intro';
     this.stateT = GAME.introTime;
+    // (só no 64) entrada da partida: câmera pelo ginásio e apresentação dos titulares (A/X pula)
+    this.introLong = !!(this.v64 && !this.training && !this.practice && !this.contest && !this.survival && !this.challenge && !this.street);
+    if (this.introLong) this.stateT = 7.6;
     cam.centerOn(this.pg.x, this.pg.y - 24);
     this.events.emit('banner', `${this.homeTeam.name} x ${this.awayTeam.name}`, this.street ? 'Rua 3x3 - primeiro a 21' : `Primeiro a ${GAME.targetScore} vence`, 0xffe14d, GAME.introTime);
     sfx.play('whistle');
@@ -1228,8 +1231,13 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.state === 'intro') {
+      // (64) A/X pula a apresentação dos titulares
+      if (this.introLong && (this.btn.K.just || this.btn.J.just)) this.stateT = Math.min(this.stateT, 0.4);
       this.stateT -= dt;
-      if (this.stateT <= 0) this.state = 'live';
+      if (this.stateT <= 0) {
+        this.state = 'live';
+        this.introLong = false;
+      }
     } else if (this.state === 'final') {
       this.stateT -= dt;
       if (this.stateT <= 0) return this.endGame();

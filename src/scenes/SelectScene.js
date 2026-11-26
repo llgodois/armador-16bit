@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { VIEW, DIFFICULTY, MODES } from '../config.js';
 import { playerTexKey, legendTexKey } from '../art/sprites.js';
+import { addPlayerArt } from '../ui/portrait.js';
 import { TEAMS, FRANCHISES, franchiseOf, historicOf, POS, teamHudColor, fmtHeight } from '../data/teams.js';
 import { BUILDS, buildById, buildForPlayer } from '../data/builds.js';
 import { LEGENDS } from '../data/legends.js';
@@ -263,8 +264,9 @@ export default class SelectScene extends Phaser.Scene {
     this.dyn.push(t);
     return t;
   }
-  sprite(x, y, tex, scale = 2) {
-    const spr = this.add.sprite(x, y, tex, 0).setOrigin(0.5, 1).setScale(scale);
+  // who = { info, colors, index }: na versão 3D vira retrato do jogador cartoon
+  sprite(x, y, tex, scale = 2, who = null) {
+    const spr = addPlayerArt(this, x, y, tex, scale, who);
     this.dyn.push({ destroy: () => spr.destroy() });
   }
 
@@ -326,7 +328,7 @@ export default class SelectScene extends Phaser.Scene {
     this.T(252, 50, team.name, { scale: 2, color: teamHudColor(team) });
     this.T(464, 42, team.city, { origin: [1, 0], color: 0xb8b0d0 });
     this.T(252, 68, team.style.slice(0, 36), { color: 0xd8d0ee });
-    this.sprite(268, 120, playerTexKey(team.id, 0));
+    this.sprite(268, 120, playerTexKey(team.id, 0), 2, { info: team.players[0], colors: team.colors, index: 0 });
     const p0 = team.players[0];
     this.T(286, 84, p0.name.slice(0, 26), { color: 0xffffff });
     this.T(286, 94, `${p0.nick}  ${fmtHeight(p0.cm)}`, { color: 0xffe14d });
@@ -371,7 +373,7 @@ export default class SelectScene extends Phaser.Scene {
     const { info, tex } = this.star();
     drawPanel(g, 216, 34, 256, 214, teamHudColor(home));
     this.T(224, 40, c.idx ? `LENDA ${c.idx}/${LEGENDS.length}  NO ${home.name.toUpperCase()}` : `ARMADOR DO ${home.name.toUpperCase()}`, { color: 0x7a7290 });
-    this.sprite(250, 130, tex, 3);
+    this.sprite(250, 130, tex, 3, { info, colors: this.team('home').colors, index: 0 });
     this.T(280, 56, info.name.slice(0, 30), { color: 0xffffff });
     this.T(280, 66, `${info.nick}  ${fmtHeight(info.cm)}`, { color: 0xffe14d });
     const bad = badgesOf(info).map((b) => BADGES[b].name);
@@ -428,7 +430,7 @@ export default class SelectScene extends Phaser.Scene {
     const { info, tex } = this.star();
     drawPanel(g, 20, 36, W - 40, 196, 0x6dff6d);
     this.T(W / 2, 44, 'TUDO PRONTO?', { scale: 2, origin: [0.5, 0], color: 0x6dff6d });
-    this.sprite(70, 140, tex, 3);
+    this.sprite(70, 140, tex, 3, { info, colors: this.team('home').colors, index: 0 });
     this.T(110, 70, home.name, { scale: 2, color: teamHudColor(home) });
     this.T(110, 88, `${home.city}${home.era ? '  ' + home.era : ''}`, { color: 0xb8b0d0 });
     this.T(110, 100, `ARMADOR: ${info.name}`, { color: 0xffe14d });
@@ -437,7 +439,7 @@ export default class SelectScene extends Phaser.Scene {
       this.T(W - 110, 70, away.name, { scale: 2, origin: [1, 0], color: teamHudColor(away) });
       this.T(W - 110, 88, `${away.city}${away.era ? '  ' + away.era : ''}`, { origin: [1, 0], color: 0xb8b0d0 });
       this.T(W / 2, 124, 'X', { scale: 2, origin: [0.5, 0], color: 0xffffff });
-      this.sprite(W - 70, 140, playerTexKey(away.id, 0), 3);
+      this.sprite(W - 70, 140, playerTexKey(away.id, 0), 3, { info: away.players[0], colors: away.colors, index: 0 });
     } else this.T(W - 40, 72, 'CHAVE SORTEADA', { origin: [1, 0], color: 0x6fa0ff });
     if (this.survival) this.T(W / 2, 160, 'ADVERSARIO FIXO DO COMPETITIVO: O BULLS DE 96', { origin: [0.5, 0], color: 0xff9a4d });
     const lines = [

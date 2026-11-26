@@ -71,6 +71,16 @@ export default class CartoonModel {
     const shoes = colors.shoes || '#222222';
     const B = S.bands;
     const outline = S.outline;
+    // visual de cada jogador, sorteado pelo NOME (sempre o mesmo para ele)
+    const h = hashStr(info.name || `j${index}`);
+    const look = {
+      hair: info.name ? h % 6 : index % 3,
+      beard: !!info.name && (h >> 3) % 5 < 2,
+      band: info.name ? (h >> 5) % 3 : 0, // 0 nenhuma · 1 cor do time · 2 branca
+      sleeve: !!info.name && (h >> 7) % 10 < 3,
+      num: [3, 1, 23, 7, 21, 0, 11, 30, 34, 13, 77, 6][((h >> 9) + index) % 12],
+    };
+    const shoe = info.name ? [shoes, '#f4f4f4', '#16161c'][(h >> 11) % 3] : shoes;
 
     const add = (parent, geo, color, x = 0, y = 0, z = 0) => {
       const m = new THREE.Mesh(geo, toon(color, B));
@@ -98,7 +108,10 @@ export default class CartoonModel {
       hip.add(knee);
       add(knee, capsule(S.limb * 1.05, L * 0.38), skin);
       add(knee, new THREE.CylinderGeometry(S.limb * 1.15, S.limb * 1.15, 1.6, 8), '#f4f4f4', 0, -L * 0.36, 0); // meião
-      add(knee, new THREE.BoxGeometry(2.3 * S.foot, 1.5 * S.foot, 4 * S.foot), shoes, 0, -L * 0.5 - 0.2, 0.7 * S.foot);
+      add(knee, new THREE.BoxGeometry(2.3 * S.foot, 1.5 * S.foot, 4 * S.foot), shoe, 0, -L * 0.5 - 0.2, 0.7 * S.foot);
+      add(knee, new THREE.BoxGeometry(2.4 * S.foot, 0.45, 4.1 * S.foot), '#f4f4f4', 0, -L * 0.5 - 0.95, 0.7 * S.foot); // sola
+      // manga de compressão numa perna (preta), em alguns jogadores
+      if (look.sleeve && s > 0) add(knee, new THREE.CylinderGeometry(S.limb * 1.12, S.limb * 1.08, L * 0.3, 8), '#16161c', 0, -L * 0.16, 0);
       this.body.add(hip);
       return { hip, knee };
     });
@@ -114,13 +127,20 @@ export default class CartoonModel {
     const th = S.torsoH;
     add(this.torso, new THREE.CylinderGeometry(S.shoulder, S.waist, th, 10).scale(1, 1, 0.62), jersey, 0, th / 2, 0);
     add(this.torso, new THREE.TorusGeometry(1.25, 0.32, 5, 10).rotateX(Math.PI / 2), trim, 0, th + 0.1, 0.15); // gola
-    // número nas costas e na frente
-    const num = numberTexture(String(info.num ?? [3, 1, 23, 7, 21][index % 5]), trim);
+    // número nas costas e na frente; nome nas costas
+    const num = numberTexture(String(info.num ?? look.num), trim);
+    const backZ = ((S.shoulder + S.waist) / 2) * 0.62 + 0.06;
     for (const z of [-1, 1]) {
       const p = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshBasicMaterial({ map: num, transparent: true }));
-      p.position.set(0, th * 0.55, z * (((S.shoulder + S.waist) / 2) * 0.62 + 0.06));
+      p.position.set(0, th * 0.55, z * backZ);
       if (z < 0) p.rotation.y = Math.PI;
       this.torso.add(p);
+    }
+    if (info.name) {
+      const nm = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 1.3), new THREE.MeshBasicMaterial({ map: nameTexture(info.name, trim), transparent: true }));
+      nm.position.set(0, th * 0.86, -(backZ + 0.05) * 0.93);
+      nm.rotation.y = Math.PI;
+      this.torso.add(nm);
     }
 
     // cabeça: pescoço, cabeça redonda, orelhas, olhos, sobrancelhas, cabelo
@@ -144,13 +164,29 @@ export default class CartoonModel {
       brow.rotation.z = s * -0.15;
       this.head.add(e, brow);
     }
-    const hairStyle = index % 3;
-    if (hairStyle === 0) add(this.head, new THREE.SphereGeometry(hr * 1.04, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42), hair, 0, hr + 0.65, -0.05);
-    else if (hairStyle === 1) add(this.head, new THREE.CylinderGeometry(hr * 0.86, hr * 0.92, hr * 0.7, 10), hair, 0, hr * 1.75 + 0.6, -0.1); // flat-top
-    else {
-      add(this.head, new THREE.SphereGeometry(hr * 1.02, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.32), hair, 0, hr + 0.7, -0.05);
-      add(this.head, new THREE.TorusGeometry(hr * 0.98, 0.35, 5, 14).rotateX(Math.PI / 2), trim, 0, hr * 1.3 + 0.6, 0); // faixa na cabeça
+    // cabelo (6 estilos) e barba, escolhidos pelo nome: cada jogador sempre igual, mas diferentes entre si
+    const cap = (k, y = hr + 0.65) => add(this.head, new THREE.SphereGeometry(hr * 1.04, 12, 8, 0, Math.PI * 2, 0, Math.PI * k), hair, 0, y, -0.05);
+    switch (look.hair) {
+      case 0:
+        cap(0.42); // curto
+        break;
+      case 1:
+        add(this.head, new THREE.CylinderGeometry(hr * 0.86, hr * 0.92, hr * 0.7, 10), hair, 0, hr * 1.75 + 0.6, -0.1); // flat-top
+        break;
+      case 2:
+        cap(0.32);
+        add(this.head, new THREE.TorusGeometry(hr * 0.98, 0.35, 5, 14).rotateX(Math.PI / 2), trim, 0, hr * 1.3 + 0.6, 0); // faixa na cabeça
+        break;
+      case 3:
+        break; // careca
+      case 4:
+        add(this.head, new THREE.SphereGeometry(hr * 1.3, 12, 9), hair, 0, hr * 1.35 + 0.6, -0.35); // black power
+        break;
+      default:
+        cap(0.36);
+        for (let k = -2; k <= 2; k++) add(this.head, new THREE.BoxGeometry(0.35, 0.4, hr * 1.8), hair, k * hr * 0.3, hr * 1.95 + 0.6 - Math.abs(k) * 0.25, -0.2); // trancinhas
     }
+    if (look.beard) add(this.head, new THREE.BoxGeometry(hr * 1.15, hr * 0.5, hr * 0.5), hair, 0, hr * 0.42 + 0.6, hr * 0.62);
 
     // braços: ombro + cotovelo + mão
     this.arms = [-1, 1].map((s) => {
@@ -163,6 +199,8 @@ export default class CartoonModel {
       sh.add(elbow);
       add(elbow, capsule(S.limb * 0.92, S.armLen * 0.36), skin);
       add(elbow, new THREE.SphereGeometry(S.hand, 8, 6), skin, 0, -S.armLen * 0.5, 0);
+      // munhequeira (em alguns jogadores, cor da faixa do time ou branca)
+      if (look.band) add(elbow, new THREE.CylinderGeometry(S.limb * 1.05, S.limb * 1.05, 1.3, 8), look.band === 1 ? trim : '#f4f4f4', 0, -S.armLen * 0.38, 0);
       this.torso.add(sh);
       return { sh, elbow };
     });
@@ -186,6 +224,32 @@ export default class CartoonModel {
     R.sh.rotation.set(dribble ? -0.5 + Math.abs(Math.sin(t * 4)) * 0.4 : -0.3, 0, 0.3);
     R.elbow.rotation.x = dribble ? -0.4 : -0.8;
   }
+}
+
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+// Sobrenome nas costas (acima do número)
+function nameTexture(name, color) {
+  const last = String(name).trim().split(/\s+/).pop().toUpperCase();
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 52;
+  const c = cv.getContext('2d');
+  c.font = `800 ${last.length > 9 ? 34 : 42}px "Barlow Condensed", Impact, sans-serif`;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.lineWidth = 6;
+  c.strokeStyle = 'rgba(0,0,0,0.6)';
+  c.strokeText(last, 128, 28);
+  c.fillStyle = color;
+  c.fillText(last, 128, 28);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 function numberTexture(n, color) {

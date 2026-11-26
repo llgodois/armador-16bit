@@ -29,9 +29,11 @@ import CompetitiveScene from '../scenes/CompetitiveScene.js';
 import { installPadBridge } from '../ui/padBridge.js';
 import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
+import { installPortraits } from './portrait3d.js';
 
 // menus e placar com visual moderno (só nesta versão)
 enableModernTheme();
+installPortraits(); // telas de menu: retratos 3D no lugar dos bonecos pixelados
 fontsReady().then(start);
 
 function start() {
