@@ -421,6 +421,46 @@ export function handContest(g, shooter, openDist, minFactor) {
   return Math.min(1, f * 1.15 + 0.05); // mão baixa: só o corpo atrapalha
 }
 
+// ---- botões da defesa no 64:
+//   LT  = DEFESA INTENSA no homem da bola (base baixa, deslize mais rápido, roubo melhor, gasta gás)
+//         ou NEGAR a linha de passe do seu homem (fica entre ele e a bola)
+//   B segurado parado = PLANTADO para cavar a falta de ataque
+//   X = roubo · Y = pulo (toco, contestar, rebote) · analógico D para cima = mão alta
+//   LB + botão do colega = ele dobra no homem da bola
+// Devolve a velocidade de movimento (a defesa intensa desliza mais rápido).
+export function defense64(g, u, handler, moving, dt, speed) {
+  const lt = !!(g.btn.PROTECT && g.btn.PROTECT.isDown);
+  const man = g.defenseAI.manOf(u);
+  u.denyTarget = null;
+  u.denying = false;
+  // B segurado sem andar: plantado (a falta de ataque sai muito mais)
+  u.chargeHold = g.btn.L.isDown && !moving ? (u.chargeHold || 0) + dt : 0;
+  const was = u.planted;
+  u.planted = u.chargeHold > 0.25;
+  if (u.planted && !was) g.floatText(u.x, u.y - u.headY - 6, 'PLANTADO', 0x6fa0ff);
+  if (lt && handler && (man === handler || u.distTo(handler) < 30) && g.stamina > 8) {
+    if (!u.intenseD) g.floatText(u.x, u.y - u.headY - 6, 'DEFESA INTENSA', 0x6fa0ff);
+    u.intenseD = true;
+    g.stamina = Math.max(0, g.stamina - 26 * dt); // (o gás também recupera ~14/s: gasto líquido ~12/s)
+    return speed * 1.15;
+  }
+  u.intenseD = false;
+  if (lt && man && handler && man !== handler) {
+    u.denying = true; // nega a linha: entre o seu homem e a bola, mais perto dele
+    u.denyTarget = { x: man.x + (handler.x - man.x) * 0.25, y: man.y + (handler.y - man.y) * 0.25 };
+  }
+  return speed;
+}
+
+export function chooseDoubler64(g, face, handler) {
+  const mate = g.home[face + 1];
+  if (!mate || mate === g.user || !handler) return;
+  g.defenseAI.double = null;
+  g.defenseAI.doubleCd = 0;
+  g.defenseAI.startDouble(mate, handler, 'DOBRA!');
+  sfx.play('select');
+}
+
 // Roubo na HORA CERTA: a bola está exposta quando desce do lado em que você está.
 export function stealTiming(g, u, h) {
   const b = g.ball;

@@ -357,6 +357,10 @@ export default class World3D {
           post: !replay && holding && !!p.post,
           bump: !replay && now - (p.bumpAt ?? -1e9) < 280,
           protect: !replay && holding && !!p.protect,
+          // (64) defesa: intensa, plantado (cavar falta), negando a linha (braço na linha do passe)
+          intense: !replay && !!p.intenseD,
+          planted: !replay && !!p.planted,
+          denyWorld: !replay && p.denying && g.ball.holder ? guardPoint(g.ball.holder) : null,
           guardWorld: !replay && holding && p.protect && g.defenderOf(p) ? guardPoint(g.defenderOf(p)) : null,
           jab: !replay && now - (p.jabAt ?? -1e9) < 220 ? p.jabSide || 1 : 0,
           // (64) ankle breaker: o desequilíbrio forte (drible que quebra) derruba no chão
@@ -868,7 +872,7 @@ export default class World3D {
     const sel = g.sel64;
     const mode = g.glyphMode || 'xbox';
     const r = Math.max(6, Math.round(this.H / 60));
-    if (sel.stage === 'pick') {
+    if (sel.stage === 'pick' || sel.stage === 'double') {
       for (let i = 0; i < 4; i++) {
         const p = g.home[i + 1];
         if (!p || p === g.user) continue;
@@ -877,6 +881,13 @@ export default class World3D {
         const gx = Math.min(this.W - r - 3, Math.max(r + 3, s.x));
         const gy = Math.min(this.H - r - 3, Math.max(r + 3, s.y));
         this.drawGlyph(gx, gy + Math.sin(time / 160 + i) * 1.5, i, r, mode);
+        if (sel.stage === 'double') {
+          // defesa: LB + botão = esse colega dobra no homem da bola
+          c.font = `800 ${Math.round(r * 1.1)}px "Barlow Condensed", sans-serif`;
+          c.textAlign = 'center';
+          c.fillStyle = '#ff9a4d';
+          c.fillText('DOBRA', gx, gy + r * 2);
+        }
       }
       return;
     }

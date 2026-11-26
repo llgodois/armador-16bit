@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -881,7 +881,11 @@ export default class GameScene extends Phaser.Scene {
     this.lbVision64 = lbVision64;
     const modCmd = now[P.E];
     // (só no 64) LB segurado no ataque: menu de companheiros (LB + A/B/X/Y escolhe, depois a ação)
-    if (this.v64) this.sel64 = modCmd && !this.userOnDefense ? this.sel64 || { stage: 'pick' } : null;
+    // (na defesa: LB + botão escolhe quem dobra)
+    if (this.v64) {
+      const want = this.userOnDefense ? 'double' : 'pick';
+      this.sel64 = modCmd ? (this.sel64 && (this.sel64.stage === 'double') === (want === 'double') ? this.sel64 : { stage: want }) : null;
+    }
     this.padMod = modIcon ? 'icon' : modCmd ? 'cmd' : null;
     this.padNum = null;
     this.padPlay = null;
@@ -988,7 +992,9 @@ export default class GameScene extends Phaser.Scene {
       if (!on && was && !b.isDown) b.up = true;
     };
     merge(this.btn.K, ps.shoot, prevShoot);
-    merge(this.btn.LOB, ps.hands, prevHands);
+    // (na defesa do 64 o Y é o pulo; a mão alta é o analógico direito para cima)
+    this.btn.HANDS = { isDown: false, just: false, up: false };
+    merge(this.btn.HANDS, ps.hands, prevHands);
   }
 
   // Direção da tela -> direção na quadra (a câmera do 3D pode estar girada: camYaw)
@@ -1689,7 +1695,7 @@ export default class GameScene extends Phaser.Scene {
     const chance = (0.28 * mult * p.skills.crossAnkle * this.difficulty.dbl) / d.skills.defense;
     if (d === this.user) {
       // contra você: se você estiver avançando (bote), cai mais fácil
-      if (Math.random() < chance * (d.lunge > 0 || d.reachT > 0 ? 2 : 1)) {
+      if (Math.random() < chance * (d.lunge > 0 || d.reachT > 0 ? 2 : 1) * (d.intenseD ? 0.6 : 1)) { // (64: defesa intensa cai menos)
         d.slowT = 0.55;
         this.floatText(d.x, d.y - d.headY - 6, 'TE PEGOU!', 0xff7b6b);
       }
@@ -2096,7 +2102,10 @@ export default class GameScene extends Phaser.Scene {
 
   checkCharge(u, h, moving, dt) {
     u.stillT = moving ? 0 : (u.stillT || 0) + dt;
-    if (!h || !h.drive || u.stillT < 0.3 || (this.chargeCd || 0) > this.time.now) return;
+    // (64) plantado no B: vale mesmo sem "infiltração" marcada, se ele vem rápido na sua direção
+    const planted = this.v64 && u.planted;
+    const hv = h ? Math.hypot(h.body.velocity.x, h.body.velocity.y) : 0;
+    if (!h || (!h.drive && !(planted && hv > 55)) || u.stillT < (planted ? 0.15 : 0.3) || (this.chargeCd || 0) > this.time.now) return;
     const d = h.distTo(u);
     if (d > 11) return;
     // você precisa estar na frente (entre ele e a cesta)
@@ -2104,7 +2113,7 @@ export default class GameScene extends Phaser.Scene {
     if (!inFront) return;
     this.chargeCd = this.time.now + 2500;
     h.drive = null;
-    if (Math.random() < 0.55 * u.skills.defense) {
+    if (Math.random() < (planted ? 0.85 : 0.55) * u.skills.defense) {
       sfx.play('whistle');
       this.floatText(u.x, u.y - u.headY - 8, 'FALTA DE ATAQUE!', 0x6dff6d);
       this.narrator.say('charge', {}, true);
@@ -2136,11 +2145,19 @@ export default class GameScene extends Phaser.Scene {
     // controle: direcional escolhe a defesa (cima Individual, dir Trocas, baixo Hedge, esq Dobra; LB + cima/dir = Zona/Pressão)
     if (this.padPlay !== null && DEF_SCHEMES[this.padPlay]) this.setUserScheme(this.padPlay);
     // Y/Triângulo (ou U) na defesa: MÃO ALTA — contesta sem sair do chão (não cai em finta, não faz falta)
-    if (this.btn.LOB.just) {
+    if (this.v64 ? this.btn.HANDS && this.btn.HANDS.just : this.btn.LOB.just) {
       u.handsT = this.time.now + 900;
       u.setPose('shoot', 0.9); // braços levantados
       this.floatText(u.x, u.y - u.headY - 6, 'MAO ALTA', 0x6fa0ff);
     }
+    // (64) Y = pulo: toco, contestar, rebote
+    if (this.v64 && this.btn.LOB.just && this.userJumpT <= 0) {
+      this.userJumpT = 0.4;
+      u.setPose('shoot', 0.3);
+      u.lift = ball.state === 'loose' || ball.state === 'shot' ? 8 : 6;
+    }
+    // (64) LB + botão do colega: ele dobra no homem da bola
+    if (this.v64 && this.sel64 && this.padNum !== null) chooseDoubler64(this, this.padNum, handler);
     // C / LB na defesa: pedir TROCA de marcação (ou, perdendo no fim do jogo por tempo, falta intencional)
     if (this.btn.SCREEN.just || this.padScreenTap) this.defCall(handler);
     // L com a bola no ar: bloqueio de rebote; com a bola solta perto: mergulho
@@ -2172,7 +2189,8 @@ export default class GameScene extends Phaser.Scene {
       this.floatText(u.x, u.y - u.headY - 6, 'DOBRA!', 0xffe14d);
     }
 
-    const speed = this.sprintAndStamina(u, moving, dt);
+    let speed = this.sprintAndStamina(u, moving, dt);
+    if (this.v64) speed = defense64(this, u, handler, moving, dt, speed); // (64) defesa intensa / negar / plantado
     if (this.btn.L.just && (moving || handler) && u.slideCooldown <= 0 && this.stamina > 6) {
       u.slideT = USER_DEFENSE.slideTime;
       u.slideCooldown = USER_DEFENSE.slideCooldown;
@@ -2208,6 +2226,7 @@ export default class GameScene extends Phaser.Scene {
       u.moveDir(bx / bl, by / bl, u.speed * 1.6, dt * 3);
     } else if (u.slideT > 0) u.moveDir(u.slideDir.x, u.slideDir.y, u.speed * USER_DEFENSE.slideMult, dt * 3);
     else if (moving) u.moveDir(ix, iy, speed, dt);
+    else if (u.denyTarget) u.seek(u.denyTarget, speed, dt); // (64) negando a linha de passe
     else u.moveDir(0, 0, 0, dt);
 
     // K na defesa: o jogo decide pela situação
@@ -2222,11 +2241,11 @@ export default class GameScene extends Phaser.Scene {
         this.gradeAdd(GRADE.steal);
         this.turnover(u, 'Interceptou!', 0x6dff6d);
         sfx.play('steal');
-      } else if (shooting || !handler || ball.state === 'shot') {
+      } else if (!this.v64 && (shooting || !handler || ball.state === 'shot')) { // (no 64 o pulo é o Y)
         this.userJumpT = 0.4;
         u.setPose('shoot', 0.3);
         u.lift = this.v64 && ball.state === 'loose' ? 8 : 5; // (64) pulo de rebote mais alto
-      } else if (!this.inbound) {
+      } else if (!this.inbound && handler) {
         u.reachT = 0.14;
         const d = u.distTo(handler);
         if (d > USER_DEFENSE.stealRange) {
@@ -2238,7 +2257,7 @@ export default class GameScene extends Phaser.Scene {
           const exposed = (handler.sprinting || Math.hypot(hv.x, hv.y) > 85 ? 1.4 : 1) * (handler.crossTimer > 0 ? 1.5 : 1) * ballSide;
           const dbl = this.isDoubled(handler) ? 1.4 : 1;
           const timing = this.v64 ? stealTiming(this, u, handler) : 1; // (64) bola exposta na hora certa
-          const chance = USER_DEFENSE.stealChance * u.skills.defense * u.skills.stealMult * dbl * exposed * timing * (1.15 - d / 60);
+          const chance = USER_DEFENSE.stealChance * u.skills.defense * u.skills.stealMult * dbl * exposed * timing * (u.intenseD ? 1.25 : 1) * (1.15 - d / 60); // (64: defesa intensa rouba mais)
           if (Math.random() < chance) {
             this.stats.stl++;
             this.gradeAdd(GRADE.steal);

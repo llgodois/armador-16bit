@@ -161,7 +161,8 @@ export default class PlayerModel {
       (gait === 'shuffle' ? 0.35 : 0) +
       (s.triple && !air ? 0.35 : 0) + // ameaça tripla: base baixa
       (s.post && !air ? 0.6 : 0) + // de costas: bem agachado
-      (s.protect && !air ? 0.4 : 0); // protegendo a bola: base baixa
+      (s.protect && !air ? 0.4 : 0) + // protegendo a bola: base baixa
+      (s.intense && !air ? 0.35 : 0); // defesa intensa: ainda mais baixo
     const kl = k(26);
     for (const [i, leg] of this.legs.entries()) {
       const ph = this.phase + (i ? Math.PI : 0);
@@ -313,6 +314,17 @@ export default class PlayerModel {
       qL = this.aimLocal(L, 2.5, 13, 2);
       qR = this.aimLocal(R, -2.5, 13, 2);
       eL = eR = -1.7;
+    } else if (s.planted) {
+      // plantado para cavar a falta: de pé, braços cruzados na frente do peito
+      qL = this.aimLocal(L, 2, 5, 6);
+      qR = this.aimLocal(R, -2, 5, 6);
+      eL = eR = -1.5;
+    } else if (s.defending && s.denyWorld) {
+      // negando a linha: o braço do lado da bola estica para a linha do passe
+      qR = this.aimWorld(R, s.denyWorld);
+      eR = -0.1;
+      qL = this.aimLocal(L, -9, 4, 4);
+      eL = -0.4;
     } else if (s.defending) {
       // mãos ativas: uma alta (contestar o passe), outra baixa na bola; trocam devagar
       const hi = Math.sin(time / 260 + this.phase * 0.05) > 0;
