@@ -7,7 +7,6 @@ const lerpN = (a, b, t) => a + (b - a) * t;
 import PixelText from '../ui/PixelText.js';
 import { drawPanel, makeMenu, drawControls } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
-import { buildPadTest } from '../v3d/padtest64.js'; // (só aparece no pause do 64)
 
 const ROLE_COLORS = { PG: 0xffe14d, SG: 0x6fa0ff, SF: 0x6dff6d, PF: 0xff9a4d, C: 0xff6bd5 };
 const TAG_COLORS = { BLOQUEIO: 0xff9a4d, ARREMESSO: 0x6dff6d, CORTE: 0x6fa0ff, '1X1': 0xffe14d, INFILTRAR: 0xff6bd5, 'SEM BOLA': 0x3ad6ff, POSTE: 0xc8a2ff };
@@ -45,7 +44,6 @@ export default class MenuScene extends Phaser.Scene {
     else if (this.mode === 'playbook') this.buildPlaybook();
     else if (this.mode === 'subs') this.buildSubs();
     else if (this.mode === 'timeout') this.buildTimeout();
-    else if (this.mode === 'padtest') buildPadTest(this);
     else this.buildControls();
 
     const nav = (d) => this.onNav && this.onNav(d);
@@ -67,7 +65,6 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   back() {
-    if (this.mode === 'padtest' && this.padTestLock) return; // (64) no teste do controle, B/START não saem por aqui
     if (this.mode !== 'pause' && this.from === 'pause') {
       this.scene.restart({ game: this.gs, mode: 'pause' });
       return;
@@ -78,7 +75,7 @@ export default class MenuScene extends Phaser.Scene {
   // ------------------------------------------------------------ pausa
   buildPause() {
     const x = VIEW.W / 2 - 100;
-    drawPanel(this.g, x, 50, 200, this.gs.camModes ? 196 : 160, 0xffe14d); // (64: três itens a mais)
+    drawPanel(this.g, x, 50, 200, this.gs.camModes ? 186 : 160, 0xffe14d); // (64: três itens a mais)
     new PixelText(this, VIEW.W / 2, 62, 'PAUSADO', { scale: 2, origin: [0.5, 0], color: 0xffe14d });
     const sc = this.gs.score;
     new PixelText(this, VIEW.W / 2, 84, `${this.gs.homeTeam.name} ${sc.home} X ${sc.away} ${this.gs.awayTeam.name}`, { origin: [0.5, 0], color: 0xb8b0d0 });
@@ -108,7 +105,6 @@ export default class MenuScene extends Phaser.Scene {
       ...(cams ? [{ id: 'meter', label: meterLabel(), color: 0x3ad6ff }] : []),
       ...(cams ? [{ id: 'glyphs', label: glyphLabel(), color: 0x3ad6ff }] : []),
       ...(cams ? [{ id: 'rumble', label: rumbleLabel(), color: 0x3ad6ff }] : []),
-      ...(cams ? [{ id: 'padtest', label: 'TESTAR CONTROLE', color: 0x3ad6ff }] : []),
       { id: 'controls', label: 'CONTROLES' },
       { id: 'restart', label: 'REINICIAR PARTIDA' },
       { id: 'quit', label: 'SAIR PARA O TITULO', color: 0xff7b6b },
@@ -139,8 +135,6 @@ export default class MenuScene extends Phaser.Scene {
           this.gs.setGlyphMode(order[(order.indexOf(this.gs.glyphMode) + 1) % order.length]);
           return m.label(m.index, glyphLabel());
         }
-        case 'padtest':
-          return this.scene.restart({ game: this.gs, mode: 'padtest', from: 'pause' });
         case 'rumble':
           try {
             localStorage.setItem('rumble3d', rumbleOn() ? 'off' : 'on');
