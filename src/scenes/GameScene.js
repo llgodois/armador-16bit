@@ -1408,12 +1408,12 @@ export default class GameScene extends Phaser.Scene {
   //   chutador: cestas de 3 · passador: assistências · infiltrador: bandejas/enterradas
   survStreakHit(kind) {
     if (!this.v64 || !this.survival || !kind || !this.build || kind !== this.build.id) return;
-    // desafio de estilo (a cada 10 posses): fez a jogada do seu estilo nesta posse = +3 no ranking
+    // desafio de estilo (a cada 10 posses): fez a jogada do seu estilo nesta posse = +1 no ranking
     if (this.styleChallenge) {
       this.styleChallenge = false;
-      this.survBonus = (this.survBonus || 0) + 3;
+      this.survBonus = (this.survBonus || 0) + 1;
       sfx.play('green');
-      this.events.emit('toast', 'DESAFIO CUMPRIDO! +3 NO RANKING', 0x3ad6ff);
+      this.events.emit('toast', 'DESAFIO CUMPRIDO! +1 NO RANKING', 0x3ad6ff);
     }
     this.survStreak = (this.survStreak || 0) + 1;
     if (this.survStreak < 3) {
@@ -1466,7 +1466,7 @@ export default class GameScene extends Phaser.Scene {
     if (!this.survPoss || this.survPoss % 10 !== 0 || !this.build) return;
     this.styleChallenge = true;
     const what = { chutador: 'CESTA DE 3', passador: 'ASSISTENCIA', infiltrador: 'BANDEJA OU ENTERRADA' }[this.build.id] || 'CESTA';
-    this.events.emit('banner', 'DESAFIO DE ESTILO', `${what} NESTA POSSE: +3 NO RANKING`, 0x3ad6ff, 1.8);
+    this.events.emit('banner', 'DESAFIO DE ESTILO', `${what} NESTA POSSE: +1 NO RANKING`, 0x3ad6ff, 1.8);
   }
 
   endSurvival() {
