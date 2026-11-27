@@ -61,8 +61,11 @@ import { HISTORIC } from './teams.js';
 export const HISTORIC_POINTS = 20;
 export function historicRequirement(team) {
   if (!team || !team.era) return 0;
-  const eras = HISTORIC.filter((h) => h.base === team.base).sort((a, b) => b.era - a.era);
-  return HISTORIC_POINTS + 10 * Math.max(0, eras.indexOf(team));
+  // os históricos originais mantêm a exigência; as épocas a mais do 64 (com "season") vêm depois deles
+  const eras = HISTORIC.filter((h) => h.base === team.base && !h.season).sort((a, b) => b.era - a.era);
+  if (!team.season) return HISTORIC_POINTS + 10 * Math.max(0, eras.indexOf(team));
+  const extra = HISTORIC.filter((h) => h.base === team.base && h.season).sort((a, b) => b.era - a.era);
+  return HISTORIC_POINTS + 10 * (eras.length + Math.max(0, extra.indexOf(team)));
 }
 export const teamBest = (profile, frId) => ((profile && profile.team_best) || {})[frId] || 0;
 export const isTeamUnlocked = (profile, team) => !team || !team.era || teamBest(profile, team.base) >= historicRequirement(team);

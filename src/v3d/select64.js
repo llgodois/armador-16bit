@@ -6,11 +6,12 @@
 // =====================================================================
 import Phaser from 'phaser';
 import { playerTexKey } from '../art/sprites.js';
-import { FRANCHISES, historicOf, POS, teamHudColor, fmtHeight } from '../data/teams.js';
+import { TEAMS, FRANCHISES, historicOf, POS, teamHudColor, fmtHeight } from '../data/teams.js';
 import { LEGENDS } from '../data/legends.js';
 import { drawPanel } from '../ui/widgets.js';
 import { BADGES, badgesOf } from '../data/badges.js';
 import { isTeamUnlocked, historicRequirement } from '../data/unlocks.js';
+import { historicsOf } from './teams64.js';
 
 const BARS = [['three', '3PT'], ['mid', 'MEI'], ['fin', 'FIN'], ['pass', 'PAS'], ['spd', 'VEL'], ['def', 'DEF']];
 const hexColor = (s) => Phaser.Display.Color.HexStringToColor(s).color;
@@ -56,7 +57,8 @@ function drawTeamStep(side) {
   // ---- prévia do time
   const team = this.team(side);
   const fr = FRANCHISES[this.sel[side]];
-  const h = historicOf(fr.id);
+  const hs = historicsOf(fr.id);
+  const h = team.era ? team : hs[verIndex(this, side, fr)] || historicOf(fr.id);
   const X0 = 244;
   const X1 = 472;
   drawPanel(g, X0, 34, 228, 214, teamHudColor(team));
@@ -89,14 +91,16 @@ function drawTeamStep(side) {
   const vy = 210;
   g.fillStyle(0x22314d, 1).fillRect(X0 + 8, vy - 4, 212, 1);
   const hLocked = h && this.locks && !isTeamUnlocked(this.registry.get('profile'), h);
-  const hLabel = h ? `HISTORICO ${h.era}${hLocked ? `  [X] ${historicRequirement(h)} PTS` : ''}` : 'HISTORICO';
+  const hi = h ? hs.indexOf(h) : -1;
+  const season = h ? h.season || `${h.era - 1}-${String(h.era).slice(2)}` : '';
+  const hLabel = h ? `HISTORICO ${season}${hs.length > 1 ? `  < ${hi + 1}/${hs.length} >` : ''}${hLocked ? `  [X] ${historicRequirement(h)} PTS` : ''}` : 'HISTORICO';
   [['ATUAL 2026-27', 0], [hLabel, 1]].forEach(([label, k]) => {
     const on = c.ver === k;
     const y = vy + k * 12;
     if (on) g.fillStyle(c.focus === 'ver' ? 0xffe14d : 0x6fa0ff, 0.18).fillRoundedRect(X0 + 8, y - 2, 212, 11, 3);
     this.T(X0 + 14, y, `${on ? '> ' : '  '}${label}`, { color: on ? (c.focus === 'ver' ? 0xffe14d : 0xffffff) : 0x71829c });
   });
-  this.T((X0 + X1) / 2, 236, c.focus === 'ver' ? 'CIMA/BAIXO E ENTER' : 'ENTER PARA A VERSAO', { origin: [0.5, 0], color: 0x71829c });
+  this.T((X0 + X1) / 2, 236, c.focus === 'ver' ? (hs.length > 1 ? 'CIMA/BAIXO  ·  ESQ/DIR TROCA A EPOCA  ·  ENTER' : 'CIMA/BAIXO E ENTER') : 'ENTER PARA A VERSAO', { origin: [0.5, 0], color: 0x71829c });
 }
 
 function drawPgStep() {
@@ -154,7 +158,53 @@ function drawPgStep() {
   });
 }
 
+// índice (na lista historicsOf) da época escolhida; sem escolha: o histórico "oficial" da franquia
+function verIndex(scene, side, fr) {
+  const hs = historicsOf(fr.id);
+  const v = scene.sel[side + 'V'];
+  if (v != null && v >= 0 && v < hs.length) return v;
+  return Math.max(0, hs.indexOf(historicOf(fr.id)));
+}
+
 export function installSelect64(SelectScene) {
+  // várias épocas por franquia (os históricos a mais do 64)
+  SelectScene.prototype.team = function (side) {
+    const fr = FRANCHISES[this.sel[side]];
+    if (!this.sel[side + 'H']) return fr;
+    return historicsOf(fr.id)[verIndex(this, side, fr)] || historicOf(fr.id) || fr;
+  };
+  const nav0 = SelectScene.prototype.nav;
+  SelectScene.prototype.nav = function (dx, dy) {
+    const s = this.steps[this.step];
+    const c = this.cur;
+    if ((s === 'home' || s === 'away') && c.focus === 'ver') {
+      const fr = FRANCHISES[this.sel[s]];
+      const hs = historicsOf(fr.id);
+      if (dy) {
+        c.ver = 1 - c.ver;
+        this.sel[s + 'H'] = c.ver === 1;
+      } else if (dx && c.ver === 1 && hs.length > 1) {
+        this.sel[s + 'V'] = (verIndex(this, s, fr) + dx + hs.length) % hs.length;
+      }
+      return;
+    }
+    const before = this.sel[s];
+    nav0.call(this, dx, dy);
+    if ((s === 'home' || s === 'away') && this.sel[s] !== before) this.sel[s + 'V'] = null; // outra franquia: volta ao histórico padrão
+  };
+  const create0 = SelectScene.prototype.create;
+  SelectScene.prototype.create = function () {
+    create0.call(this);
+    // a época usada na última partida volta escolhida
+    const prev = this.registry.get('setup') || {};
+    for (const side of ['home', 'away']) {
+      const t = TEAMS.find((x) => x.id === prev[side] && x.era);
+      this.sel[side + 'V'] = t ? historicsOf(t.base).indexOf(t) : null;
+    }
+    if (this.survival) this.sel.awayV = null; // Competitivo: sempre o Bulls 96
+    this.refresh();
+  };
+
   SelectScene.prototype.drawTeamStep = drawTeamStep;
   SelectScene.prototype.drawPgStep = drawPgStep;
   // o título grande (primeiro texto da tela) encostava no topo com a fonte nova: desce um pouco
