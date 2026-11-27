@@ -6,6 +6,7 @@ import { sfx } from '../audio/sfx.js';
 import { LEGENDS } from '../data/legends.js';
 import { UNLOCKS, FREE_LEGENDS, isUnlocked, unlockOf, checkChallenges, recordTeamScore } from '../data/unlocks.js';
 import { saveProfile, submitScore, topScores, isOnline } from '../net/backend.js';
+import { THEME } from '../ui/theme.js';
 
 // =====================================================================
 //  COMPETITIVO — SOBREVIVÊNCIA: só posses de ataque, 3 vidas.
@@ -92,6 +93,17 @@ export default class CompetitiveScene extends Phaser.Scene {
     loading.destroy();
     if (!rows) return this.T(W / 2, 100, 'SEM CONEXAO COM O SERVIDOR', { origin: [0.5, 0], color: 0xff7b6b });
     if (!rows.length) return this.T(W / 2, 100, 'NINGUEM JOGOU AINDA', { origin: [0.5, 0], color: 0xb8b0d0 });
+    if (THEME.modern) {
+      // (64: a fonte não é monoespaçada: cada coluna no seu lugar)
+      this.rankRow64({ name: 'JOGADOR', score: 'PTS', baskets: 'CESTAS', assists: 'ASSIST', pg: 'ARMADOR | TIME' }, -1, 44, 0x7a7290, 16);
+      rows.forEach((r, i) => {
+        const me = this.profile && r.name === this.profile.name;
+        const hl = highlight && r.name === highlight.name && r.score === highlight.score;
+        this.rankRow64(r, i, 56 + i * 11, hl ? 0x6dff6d : me ? 0xffe14d : 0xd8d0ee, 16);
+      });
+      this.T(W / 2, VIEW.H - 30, 'ENTER / ESC VOLTAR', { origin: [0.5, 0], color: 0xb8b0d0 });
+      return;
+    }
     this.T(16, 44, '#  JOGADOR      PTS CESTAS ASSIST  ARMADOR          TIME', { color: 0x7a7290 });
     rows.forEach((r, i) => {
       const me = this.profile && r.name === this.profile.name;
@@ -159,6 +171,23 @@ export default class CompetitiveScene extends Phaser.Scene {
     draw();
   }
 
+  // (64) uma linha do ranking em colunas fixas: posição, jogador, pontos, cestas, assistências, armador, time
+  rankRow64(r, i, y, color, x0) {
+    const [pg, team] = String(r.pg || '').split(' | ');
+    const cols = [
+      [0, i < 0 ? '#' : String(i + 1), 0],
+      [16, String(r.name).slice(0, 12), 0],
+      [96, String(r.score), 1],
+      [132, String(r.baskets ?? ''), 1],
+      [170, String(r.assists ?? ''), 1],
+      // bônus de estilo do 64 = pontos - cestas - assistências (a conta fecha em cada linha)
+      [206, i < 0 ? 'BONUS' : String(Math.max(0, (Number(r.score) || 0) - (Number(r.baskets) || 0) - (Number(r.assists) || 0))), 1],
+      [220, (pg || '-').slice(0, 22), 0],
+      [334, (team || '-').slice(0, 18), 0],
+    ];
+    for (const [dx, txt, right] of cols) this.T(x0 + dx, y, txt, { color, origin: [right ? 1 : 0, 0] });
+  }
+
   // Fim da partida de Sobrevivência: salva, dá moedas, confere desafios e mostra o ranking.
   async pageResult() {
     const W = VIEW.W;
@@ -181,7 +210,9 @@ export default class CompetitiveScene extends Phaser.Scene {
     }
     this.header('FIM DE JOGO', 0x6dff6d);
     this.T(W / 2, 46, `${r.score} PONTOS`, { scale: 3, origin: [0.5, 0], color: 0xffe14d });
-    this.T(W / 2, 74, `${r.fgm} CESTAS  +  ${r.ast} ASSISTENCIAS   -   ${r.poss} POSSES   -   ${r.pts} PONTOS NO PLACAR`, { origin: [0.5, 0], color: 0xd8d0ee });
+    // (64: o desafio de estilo dá pontos de bônus; entram na conta mostrada)
+    const bonusTxt = r.bonus ? `  +  ${r.bonus} BONUS DE ESTILO` : '';
+    this.T(W / 2, 74, `${r.fgm} CESTAS  +  ${r.ast} ASSISTENCIAS${bonusTxt}   -   ${r.poss} POSSES   -   ${r.pts} PONTOS NO PLACAR`, { origin: [0.5, 0], color: 0xd8d0ee });
     this.T(W / 2, 86, `ARMADOR: ${r.pg}   -   TIME: ${r.teamName || '-'}`, { origin: [0.5, 0], color: 0x6fa0ff });
     let y = 104;
     if (p) {
@@ -190,6 +221,23 @@ export default class CompetitiveScene extends Phaser.Scene {
       if (record) {
         this.T(W / 2, y, 'NOVO RECORDE PESSOAL!', { origin: [0.5, 0], color: 0x6dff6d });
         y += 12;
+      }
+      // (64: muitos desafios de uma vez estouravam a tela: vira uma lista corrida em poucas linhas)
+      if (THEME.modern && got.length > 2) {
+        const names = got.map((id) => (LEGENDS.find((x) => x.id === id) || { name: id }).name.toUpperCase());
+        const lines = [''];
+        for (const n of names) {
+          const cur = lines[lines.length - 1];
+          if ((cur + ', ' + n).length > 78 && cur) lines.push(n);
+          else lines[lines.length - 1] = cur ? `${cur}, ${n}` : n;
+        }
+        this.T(W / 2, y, `DESAFIOS CUMPRIDOS (${names.length}) - LENDAS LIBERADAS:`, { origin: [0.5, 0], color: 0xff6bd5 });
+        y += 11;
+        for (const ln of lines.slice(0, 3)) {
+          this.T(W / 2, y, ln + (ln === lines[2] && lines.length > 3 ? ' ...' : ''), { origin: [0.5, 0], color: 0xffb3ea });
+          y += 10;
+        }
+        got = [];
       }
       for (const id of got) {
         const l = LEGENDS.find((x) => x.id === id);
@@ -211,6 +259,7 @@ export default class CompetitiveScene extends Phaser.Scene {
     rows.forEach((row, i) => {
       const hl = p && row.name === p.name && row.score === r.score;
       const team = String(row.pg || '').split(' | ')[1] || '-';
+      if (THEME.modern) return this.rankRow64(row, i, y + 12 + i * 10, hl ? 0x6dff6d : 0xd8d0ee, W / 2 - 170);
       this.T(W / 2, y + 12 + i * 10, `${i + 1}. ${row.name.padEnd(12)} ${String(row.score).padStart(4)}   ${team.padEnd(13).slice(0, 13)}`, { origin: [0.5, 0], color: hl ? 0x6dff6d : 0xd8d0ee });
     });
     this.T(W / 2, VIEW.H - 30, 'ENTER: JOGAR DE NOVO    ESC: MENU', { origin: [0.5, 0], color: 0xb8b0d0 });
