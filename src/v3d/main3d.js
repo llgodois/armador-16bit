@@ -67,6 +67,22 @@ HUDScene.prototype.update = function (...args) {
 fontsReady().then(start);
 
 function start() {
+// Defeito do Phaser: com o controle numa "vaga" que não é a 1ª (o Windows às vezes numera assim),
+// a lista interna de controles fica com buracos e, ao trocar de tela, o Phaser tenta desligar um
+// controle que não existe — o jogo congelava no menu. Aqui as rotinas de desligar ignoram os buracos.
+{
+  const GP = Phaser.Input.Gamepad.GamepadPlugin.prototype;
+  GP.stopListeners = function () {
+    this.target.removeEventListener('gamepadconnected', this.onGamepadHandler);
+    this.target.removeEventListener('gamepaddisconnected', this.onGamepadHandler);
+    this.sceneInputPlugin.pluginEvents.off(Phaser.Input.Events.UPDATE, this.update);
+    for (const p of this.gamepads) if (p) p.removeAllListeners();
+  };
+  GP.disconnectAll = function () {
+    for (const p of this.gamepads) if (p && p.pad) p.pad.connected = false;
+  };
+}
+
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
   parent: 'game',
