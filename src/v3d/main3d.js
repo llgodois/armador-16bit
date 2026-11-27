@@ -32,6 +32,7 @@ import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.j
 import { installPortraits } from './portrait3d.js';
 import { installSelect64 } from './select64.js';
 import { installRoster64 } from './teams64.js';
+import { installLoginPad } from './loginpad64.js';
 import { sfx } from '../audio/sfx.js';
 import { rumble } from '../game/mech64.js';
 
@@ -87,6 +88,7 @@ const game = new Phaser.Game({
 });
 
 installPadBridge(game);
+installLoginPad(game); // (64) o controle navega nos campos e botões do login
 // cada tela, ao ser criada, ganha o zoom e o fundo translúcido (a partida 2D fica escondida)
 game.events.once('ready', () => {
   // regras que só existem no 64 (vida extra na Sobrevivência, enterrada, Pro Stick, peso no movimento)
