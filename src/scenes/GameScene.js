@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64, ankleFall64, recovering64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64, ankleFall64, recovering64, ankleOutcome64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -1837,11 +1837,14 @@ export default class GameScene extends Phaser.Scene {
       const base = d.lunge > 0 ? CROSSOVER.ankleChanceLunging : CROSSOVER.ankleChance;
       if (Math.random() < (base * u.skills.crossAnkle * mult) / d.skills.defense) {
         d.stun = CROSSOVER.ankleStun;
-        if (this.v64) ankleFall64(this, d); // (64) cai de verdade: fica mais no chão e a ajuda vem
+        // (64) quase sempre só desequilibra; cair é raro (e aí a ajuda vem)
+        const fell = !this.v64 || ankleOutcome64(this, d, u);
         d.stop();
-        this.floatText(d.x, d.y - d.headY - 6, label, 0xffe14d);
-        this.narrator.say('ankle', {}, true);
-        sfx.play('ankle');
+        this.floatText(d.x, d.y - d.headY - 6, fell ? label : 'DESEQUILIBROU', fell ? 0xffe14d : 0xb8e0ff);
+        if (fell) {
+          this.narrator.say('ankle', {}, true);
+          sfx.play('ankle');
+        } else sfx.play('cross');
       }
     }
   }
@@ -1982,11 +1985,14 @@ export default class GameScene extends Phaser.Scene {
       const base = d.lunge > 0 ? CROSSOVER.ankleChanceLunging : CROSSOVER.ankleChance;
       if (Math.random() < (base * u.skills.crossAnkle * comboMult) / d.skills.defense) {
         d.stun = CROSSOVER.ankleStun;
-        if (this.v64) ankleFall64(this, d); // (64) cai de verdade: fica mais no chão e a ajuda vem
+        // (64) quase sempre só desequilibra; cair é raro (e aí a ajuda vem)
+        const fell = !this.v64 || ankleOutcome64(this, d, u);
         d.stop();
-        this.floatText(d.x, d.y - d.headY - 6, 'QUEBROU!', 0xffe14d);
-        this.narrator.say('ankle', {}, true);
-        sfx.play('ankle');
+        this.floatText(d.x, d.y - d.headY - 6, fell ? 'QUEBROU!' : 'DESEQUILIBROU', fell ? 0xffe14d : 0xb8e0ff);
+        if (fell) {
+          this.narrator.say('ankle', {}, true);
+          sfx.play('ankle');
+        } else sfx.play('cross');
       }
     }
   }

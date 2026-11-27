@@ -1032,3 +1032,22 @@ export function ankleFall64(g, d) {
 }
 // ainda se levantando (sem toco / sem mão na bola)
 export const recovering64 = (g, d) => (d.recoverUntil || 0) > g.time.now;
+
+// Drible que funcionou: na maioria das vezes o marcador só DESEQUILIBRA (tropeça ~0,45 s e fica
+// lento um instante); CAIR é raro — mais provável se ele estava dando o bote, num combo de dribles
+// e com drible bom, menos contra bom defensor. Devolve true se caiu.
+export function ankleOutcome64(g, d, u) {
+  const q = clamp(((u.skills.handle ?? 75) - 55) / 44, 0, 1);
+  const combo = Math.min(3, Math.max(0, (g.combo || 1) - 1));
+  let chance = 0.1 + (d.lunge > 0 ? 0.2 : 0) + 0.06 * combo;
+  chance *= 0.7 + 0.6 * q;
+  chance /= d.skills.defense || 1;
+  if (Math.random() < clamp(chance, 0.04, 0.55)) {
+    ankleFall64(g, d);
+    return true;
+  }
+  d.stun = Math.min(d.stun || 0, 0.45); // tropeça (abaixo do tempo que derruba no 3D)
+  d.slowT = Math.max(d.slowT || 0, 0.5);
+  d.recoverUntil = g.time.now + 700;
+  return false;
+}
