@@ -9,6 +9,7 @@
 //  Nada em src/ (fora desta pasta) sabe que o 3D existe.
 // =====================================================================
 import './storage64.js'; // PRIMEIRO: dados (Supabase e navegador) separados do 16-bit
+import './audio64.js'; // som do 64 (música e efeitos estilo anos 90; o 16-bit segue chiptune)
 import Phaser from 'phaser';
 import { VIEW, DEBUG } from '../config.js';
 import BootScene from '../scenes/BootScene.js';
