@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64, ankleFall64, recovering64, ankleOutcome64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64, ankleFall64, recovering64, ankleOutcome64, jumpPass64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -1598,6 +1598,8 @@ export default class GameScene extends Phaser.Scene {
         u.setPose('shoot', 0.1);
         u.lookAt = this.basket;
         this.regenStamina(dt);
+        // (64) A no meio do arremesso: passa no ar (mais arriscado, depende de quem passa)
+        if (this.v64 && this.btn.J.just && !this.inbound && jumpPass64(this, u, ix, iy, moving)) return;
         if (!this.btn.K.isDown || this.meterValue >= SHOT.autoRelease) this.releaseUserShot();
         return;
       }

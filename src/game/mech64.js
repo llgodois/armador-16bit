@@ -9,7 +9,7 @@
 //  - tapinha / enterrada no rebote ofensivo
 // =====================================================================
 import { SHOT, STAMINA, PLAYER, USER_DEFENSE, REBOUND, COURT, MID_Y, CROSSOVER } from '../config.js';
-import { clamp, distToBasket, courtDist } from '../utils/math.js';
+import { clamp, distToBasket, courtDist, closestOnSegment } from '../utils/math.js';
 import { sfx } from '../audio/sfx.js';
 
 const TRIPLE_TIME = 1.4; // segundos com a bola na mão antes de começar a quicar sozinho
@@ -767,10 +767,17 @@ function giveAndGo(g, hasBall) {
 export function passMods64(g, from, to, opts) {
   const r = { mult: 1, speed: 1 };
   const d = Math.hypot(to.x - from.x, to.y - from.y);
-  if (d < 20 && !opts.bounce && !g.ball.lob) {
+  if (d < 20 && !opts.bounce && !opts.jump && !g.ball.lob) {
     r.mult = 0.1;
     r.speed = 1.5;
     g.floatText(from.x, from.y - from.headY - 14, 'HANDOFF', 0x6fa0ff);
+    return r;
+  }
+  if (opts.jump) {
+    // passe no ar: bom passador quase não perde; passe torto sai lento e é fácil de cortar
+    const { q, botched } = opts.jump;
+    r.mult = (1.6 - 0.6 * q) * (botched ? 3.2 : 1);
+    r.speed = botched ? 0.72 : 0.94;
     return r;
   }
   if (opts.flashy) {
@@ -1050,4 +1057,46 @@ export function ankleOutcome64(g, d, u) {
   d.slowT = Math.max(d.slowT || 0, 0.5);
   d.recoverUntil = g.time.now + 700;
   return false;
+}
+
+// ------------------------------------------------------------------ passe no ar (saindo do arremesso)
+// Subiu para o arremesso (X segurado) e apertou A: passa no ar. Mais arriscado que um passe normal:
+// a defesa intercepta mais e às vezes o passe sai torto (mais lento, fácil de cortar). O risco
+// depende de quem passa (nota de passe) e de quanto ele está marcado. Devolve true se passou.
+export function jumpPass64(g, u, ix, iy, moving) {
+  const b = g.basket;
+  const aim = moving ? { x: ix, y: iy } : { x: b.x - u.x, y: b.y - u.y };
+  const t = g.passTarget && g.passTarget !== u ? g.passTarget : g.choosePassTarget(u, aim);
+  if (!t || g.ball.holder !== u || g.ball.state !== 'held') return false;
+  const pass = (u.info && u.info.r && u.info.r.pass) || 70;
+  const q = clamp((pass - 55) / 40, 0, 1); // 0 = passe ruim · 1 = armador de elite
+  const dd = g.nearestDefenderDist(u);
+  const botched = Math.random() < clamp(0.3 - 0.24 * q + (dd < 14 ? 0.1 : 0), 0.05, 0.42);
+  g.gathering = false;
+  g.meterValue = 0;
+  g.stepBack = 0;
+  g.jArmed = false;
+  g.iconUsed = true;
+  u.pose = null;
+  u.lift = 5; // ainda no ar
+  g.floatText(u.x, u.y - u.headY - 16, botched ? 'PASSE NO AR... TORTO!' : 'PASSE NO AR', botched ? 0xff9a4d : 0x6fa0ff);
+  // quem está na linha do passe (ou, sem ninguém nela, o defensor mais perto de quem passou)
+  let cut = null;
+  let cutPt = null;
+  let laneD = Infinity;
+  for (const d of g.defTeam) {
+    if (d.stun > 0) continue;
+    const c = closestOnSegment(d, u, t);
+    if (c.t > 0.12 && c.t < 0.95 && c.d < laneD) [laneD, cut, cutPt] = [c.d, d, { x: c.x, y: c.y }];
+  }
+  // chance de perder: passe torto quase sempre; passe limpo, pouco (menos ainda com bom passador)
+  const lose = botched ? 0.6 : clamp(0.12 - 0.1 * q + (laneD < 14 ? 0.1 : 0), 0.02, 0.22);
+  if (cut && laneD < 40 && Math.random() < lose) {
+    g.ball.pass(u, t, cut, cutPt);
+    u.drive = null;
+    sfx.play('pass');
+    return true;
+  }
+  g.doPass(u, t, { jump: { q, botched } });
+  return true;
 }
