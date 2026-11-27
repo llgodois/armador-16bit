@@ -426,8 +426,9 @@ export default class World3D {
       }
       // arremesso/passe: a bola fica entre as mãos do modelo
       if (!replay && b.state === 'held' && b.holder === p && (shoot || hold)) {
-        const c = m.handsCenter();
-        if (shoot) c.y += BALL_R * 0.9;
+        // arremesso: a bola fica apoiada na mão do arremesso (a outra só encosta do lado)
+        const c = shoot ? m.handsCenter().lerp(m.handPos(), 0.65) : m.handsCenter();
+        if (shoot) c.y += BALL_R * 0.85;
         else c.add(new THREE.Vector3(Math.sin(m.yaw), 0, Math.cos(m.yaw)).multiplyScalar(BALL_R * 0.7));
         this.handBall = c;
       }

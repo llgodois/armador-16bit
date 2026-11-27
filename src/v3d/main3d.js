@@ -194,7 +194,7 @@ function bind(scene) {
   }
   scene.cameras.main.setVisible(false); // o 2D da quadra some; o HUD (outra cena) continua
   // no 3D, ao começar o arremesso em movimento o jogador desacelera aos poucos (embalo natural)
-  scene.gatherBrake = 0.35;
+  scene.gatherBrake = 1.6; // (era 0,35: deslizava ~1 m com os pés parados; agora vira um passinho para dentro do arremesso)
   // textos flutuantes ("REBOTE", "+3"...) também aparecem no 3D
   // (a cena é reaproveitada a cada partida: usa sempre o método original do protótipo)
   scene.floatText = function (x, y, str, color) {

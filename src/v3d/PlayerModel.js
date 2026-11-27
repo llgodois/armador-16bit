@@ -181,6 +181,10 @@ export default class PlayerModel {
         } else if (this.hangT > 0 && this.finish === 'dunk') {
           hx = 0.15; // pendurado: pernas soltas
           kx = 0.35 + (i ? 0.15 : 0);
+        } else if (s.gather != null || s.shoot || this.followT > 0) {
+          // arremesso: pernas quase esticadas, juntas, ponta do pé para baixo (não encolhe)
+          hx = -0.1 - 0.06 * i;
+          kx = 0.22 + 0.1 * i;
         } else {
           hx = i ? -0.25 : -0.8;
           kx = i ? 0.6 : 1.25;
@@ -196,9 +200,10 @@ export default class PlayerModel {
         hx = -Math.sin(ph) * A * 0.65 - bend * 0.5;
         kx = Math.max(0, Math.cos(ph)) * 0.9 * A + bend + 0.1;
       } else {
-        hx = Math.sin(ph) * A - bend * 0.55;
+        // (passada mais contida: antes o quadril abria ±60° e o calcanhar quase batia no quadril)
+        hx = Math.sin(ph) * A * 0.72 - bend * 0.55;
         // o joelho dobra quando a perna volta para frente (fase de recuperação)
-        kx = Math.max(0, -Math.cos(ph)) * (0.5 + 0.9 * A) * (gait === 'run' ? 1 : 0) + bend + 0.08;
+        kx = Math.max(0, -Math.cos(ph)) * (0.35 + 0.55 * A) * (gait === 'run' ? 1 : 0) + bend + 0.12;
       }
       // jab step: a perna do lado do jab avança um passo curto
       if (s.jab && !air && i === (s.jab > 0 ? 1 : 0)) {
@@ -293,10 +298,22 @@ export default class PlayerModel {
       eL = eR = -0.08;
       fast = true;
     } else if (s.shoot) {
-      // as duas mãos juntas acima da cabeça
-      qL = this.aimLocal(L, 0.6, 21, 2.5);
-      qR = this.aimLocal(R, -0.6, 21, 2.5);
-      eL = eR = -0.35;
+      // arremesso em fases (acompanha o medidor quando é você; a IA vai direto ao ponto de arremesso):
+      // ponto de arremesso = bola na testa sobre a mão do arremesso, cotovelo em "L" e a outra mão
+      // de apoio do lado; na soltura o braço estica para cima e para a frente e o apoio sai da bola
+      const gph = s.gather != null ? s.gather : 0.6;
+      if (gph < 0.74) {
+        const up = clamp((gph - 0.3) / 0.44, 0, 1);
+        qR = this.aimLocal(R, -1.6, 9 + 4 * up, 9);
+        eR = -1.35 + 0.15 * up;
+        qL = this.aimLocal(L, 3, 8.5 + 3.5 * up, 8);
+        eL = -1.15;
+      } else {
+        qR = this.aimLocal(R, -1, 23, 6.5);
+        eR = -0.2;
+        qL = this.aimLocal(L, 4, 14, 3);
+        eL = -0.9;
+      }
       fast = true;
     } else if (this.passT > 0) {
       // passe de peito: as duas mãos empurram para a frente
@@ -307,14 +324,15 @@ export default class PlayerModel {
       fast = true;
     } else if (this.followT > 0) {
       // finalização: braço do arremesso fica no alto com o "punho" caído
-      qR = this.aimLocal(R, -1, 22, 7);
-      eR = -1.15;
-      qL = eulerQ(-0.5, 0, -0.35);
-      eL = -0.6;
+      qR = this.aimLocal(R, -1, 24, 6);
+      eR = -0.35; // braço no alto, quase esticado (o "punho caído" do arremesso)
+      qL = this.aimLocal(L, 4, 13, 3); // a mão de apoio desce ao lado
+      eL = -0.9;
     } else if (s.hold) {
-      // bola no peito, mãos juntas na frente
-      qL = this.aimLocal(L, 1, 4, 8);
-      qR = this.aimLocal(R, -1, 4, 8);
+      // bola no peito, mãos juntas na frente (recolhendo para o arremesso: mais baixa, na cintura)
+      const low = s.gather != null ? 3 : 0;
+      qL = this.aimLocal(L, 1, 4 - low, 8);
+      qR = this.aimLocal(R, -1, 4 - low, 8);
       eL = eR = -0.7;
       fast = true;
     } else if (this.celebT > 0) {
