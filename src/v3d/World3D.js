@@ -1,7 +1,7 @@
 // Desenha a partida da GameScene em 3D. Só LÊ o estado do jogo: posições,
 // bola, estado da partida e os indicadores (anel, alvo do passe, medidor...).
 import * as THREE from 'three';
-import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET, VISION, OFFENSE } from '../config.js';
+import { Y_SCALE, PLAYER, SHOT, MID_Y, BASKET, VISION, OFFENSE, COURT } from '../config.js';
 import { buildCourt, VS, toZ } from './court3d.js';
 import PlayerModel, { SIZE } from './PlayerModel.js';
 import { MATE_ACTIONS } from '../game/mech64.js';
@@ -217,7 +217,18 @@ export default class World3D {
     this.lastTime = time;
     const paused = !g.scene.isActive('Game');
     // visão de quadra: o jogo anda em câmera lenta, e as animações do 3D também
-    const fdt = paused ? 0 : dt * (g.visionOn ? VISION.timeScale : 1);
+    const fdt = paused ? (g.huddle64 ? dt : 0) : dt * (g.visionOn ? VISION.timeScale : 1);
+    // (64) tempo técnico: os times vão para a lateral e fazem a roda (com o jogo pausado)
+    const hud = g.huddle64;
+    if (hud) {
+      if (hud.t == null) hud.t = 0;
+      hud.t += dt;
+    }
+    if (this.hudRef !== hud) {
+      this.hudRef = hud;
+      this.hudFrom = new Map();
+      this.hudShot = null;
+    }
 
     const replay = g.state === 'replay' && g.replay ? g.replay.frames[Math.floor(g.replay.i)] : null;
     this.syncPlayers(g, replay, fdt, time);
@@ -268,10 +279,12 @@ export default class World3D {
         vx = v.x;
         vy = v.y;
       }
+      const hp = !replay && g.huddle64 ? this.huddlePos(g, p, x, y) : null;
+      if (hp) [x, y, vx, vy] = [hp.x, hp.y, hp.vx, hp.vy];
       this.prevPos.set(p, { x, y });
       const spd = Math.hypot(vx, vy / PLAYER.verticalFactor);
-      let fx = p.facing.x;
-      let fz = p.facing.y;
+      let fx = hp ? hp.fx : p.facing.x;
+      let fz = hp ? hp.fz : p.facing.y;
       if (replay && spd > 10) {
         fx = vx;
         fz = vy / PLAYER.verticalFactor;
@@ -364,7 +377,7 @@ export default class World3D {
           shoot,
           stun: p.stun,
           lunge: p.lunge,
-          defending: !replay && g.offSide && p.team !== g.offSide && g.state === 'live' && !backRun, // (correndo de volta: postura normal)
+          defending: !replay && !hp && g.offSide && p.team !== g.offSide && g.state === 'live' && !backRun, // (correndo de volta: postura normal)
           dribble,
           hold,
           ballWorld,
@@ -648,7 +661,92 @@ export default class World3D {
     this.sun.target.position.copy(this.look);
   }
 
+  // (64) roda do tempo técnico: cada time vai para a lateral esquerda, no seu lado da quadra,
+  // e forma um círculo virado para dentro. Devolve posição/velocidade/direção do jogador.
+  huddleCenter(team) {
+    return { x: COURT.left + 30, y: MID_Y + (team === 'home' ? -62 : 62) };
+  }
+  huddlePos(g, p, x0, y0) {
+    if (!this.hudFrom.has(p)) this.hudFrom.set(p, { x: x0, y: y0 });
+    const from = this.hudFrom.get(p);
+    const list = p.team === 'home' ? g.home : g.away;
+    const i = Math.max(0, list.indexOf(p));
+    const c = this.huddleCenter(p.team);
+    const a = (i / Math.max(1, list.length)) * Math.PI * 2 + (p.team === 'home' ? 0.4 : 0.9);
+    const R = 13;
+    const tx = c.x + Math.cos(a) * R;
+    const ty = c.y + Math.sin(a) * R * PLAYER.verticalFactor;
+    const dx = tx - from.x;
+    const dy = ty - from.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const SPD = 115;
+    const walked = Math.min(dist, SPD * Math.max(0, g.huddle64.t - 0.15 - i * 0.06));
+    const arrived = walked >= dist - 0.5;
+    const x = from.x + (dx / dist) * walked;
+    const y = from.y + (dy / dist) * walked;
+    const vx = arrived ? 0 : (dx / dist) * SPD;
+    const vy = arrived ? 0 : (dy / dist) * SPD;
+    // andando: olha para onde vai · na roda: para o centro
+    const fx = arrived ? c.x - x : dx;
+    const fz = arrived ? (c.y - y) / PLAYER.verticalFactor : dy / PLAYER.verticalFactor;
+    return { x, y, vx, vy, fx, fz };
+  }
+  huddleCamera(g, dt) {
+    const h = g.huddle64;
+    const c = this.huddleCenter('home');
+    const cz = toZ(c.y);
+    const a = 0.35 + Math.sin(h.t * 0.25) * 0.18; // gira devagar em volta da roda
+    const pos = new THREE.Vector3(c.x + Math.cos(a) * 125, 62, cz + Math.sin(a) * 125);
+    const look = new THREE.Vector3(c.x, 18, cz);
+    if (!this.hudShot) this.hudShot = { pos: this.camera.position.clone(), look: this.look.clone() };
+    const u = Math.min(1, h.t / 1.3);
+    const e = u * u * (3 - 2 * u);
+    this.camPos = this.hudShot.pos.clone().lerp(pos, e);
+    this.look.copy(this.hudShot.look.clone().lerp(look, e));
+    this.camera.position.copy(this.camPos);
+    this.cinemaBlend = 1; // ao voltar ao jogo, a câmera desliza daqui
+    this.cinemaLook = this.look.clone();
+    this.camera.lookAt(this.look);
+    this.sun.position.set(this.look.x - 90, 320, this.look.z + 110);
+    this.sun.target.position.copy(this.look);
+  }
+  // vinheta de TV do tempo técnico (entra deslizando da esquerda)
+  drawHuddleCard(g, time) {
+    const h = g.huddle64;
+    if (!h || !h.card) return;
+    const t = h.t - 0.5;
+    if (t < 0) return;
+    const c = this.ctx;
+    const fs = Math.round(this.H / 11);
+    const w = Math.round(this.W * 0.46);
+    const u = Math.min(1, t / 0.45);
+    const e = 1 - Math.pow(1 - u, 3);
+    const x = Math.round(-w + (w + this.W * 0.05) * e);
+    const y = Math.round(this.H * 0.6); // (embaixo: no topo fica o placar)
+    const hh = fs * 2.5;
+    const team = g.homeTeam;
+    c.globalAlpha = 0.9;
+    c.fillStyle = '#0a1120';
+    c.fillRect(x, y, w, hh);
+    c.globalAlpha = 1;
+    c.fillStyle = team.colors.jersey;
+    c.fillRect(x, y, Math.max(6, fs * 0.3), hh);
+    c.fillStyle = team.colors.trim || '#ffffff';
+    c.fillRect(x, y + hh - 4, w, 4);
+    c.textAlign = 'left';
+    c.textBaseline = 'top';
+    c.fillStyle = '#ffffff';
+    c.font = `800 ${fs}px "Barlow Condensed", sans-serif`;
+    c.fillText('TEMPO TECNICO', x + fs * 0.7, y + fs * 0.2);
+    const sc = g.score || { home: 0, away: 0 };
+    c.fillStyle = '#ffe14d';
+    c.font = `600 ${Math.round(fs * 0.5)}px "Barlow Condensed", sans-serif`;
+    const left = Math.max(0, (g.timeouts || 0) - 1);
+    c.fillText(`${team.name.toUpperCase()}   ·   ${sc.home} X ${sc.away}   ·   RESTA${left === 1 ? '' : 'M'} ${left}`, x + fs * 0.7, y + fs * 1.45);
+  }
+
   syncCamera(g, dt) {
+    if (g.huddle64) return this.huddleCamera(g, dt);
     if (g.state === 'intro' && g.introLong && g.home) return this.introCamera(g, dt);
     this.introCard = null;
     if (g.state === 'replay' && g.replay && g.v64) return this.replayCamera(g, dt);
@@ -850,6 +948,7 @@ export default class World3D {
     }
     this.drawReplayInfo(g);
     this.drawIntroCard();
+    this.drawHuddleCard(g, time);
   }
 
   // Apresentação dos titulares: faixa de TV no canto de baixo

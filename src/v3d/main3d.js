@@ -180,6 +180,7 @@ function bind(scene) {
   rumbleScene = scene;
   if (world.ball !== scene.ball) {
     scene.tk64 = null; // partida nova: takeover zerado
+    scene.huddle64 = null;
     scene.ankles64 = 0;
   }
   scene.cameras.main.setVisible(false); // o 2D da quadra some; o HUD (outra cena) continua

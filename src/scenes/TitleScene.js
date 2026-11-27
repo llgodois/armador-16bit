@@ -6,6 +6,7 @@ import { drawPanel, makeMenu, drawControls } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
 import { load as loadChamp } from '../data/championship.js';
 import { THEME } from '../ui/theme.js';
+import { settings64 } from '../v3d/settings64.js'; // (só usado no 64)
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
@@ -55,7 +56,7 @@ export default class TitleScene extends Phaser.Scene {
       const flip = () => this.scene.restart({ mode: 'controls', pad: !this.padPage });
       this.input.keyboard.on('keydown-LEFT', flip);
       this.input.keyboard.on('keydown-RIGHT', flip);
-      this.input.keyboard.once('keydown-ESC', () => this.scene.restart({ mode: 'menu' }));
+      this.input.keyboard.once('keydown-ESC', () => this.scene.restart({ mode: THEME.modern ? 'settings' : 'menu' }));
       this.input.keyboard.once('keydown-ENTER', () => this.scene.start('Remap'));
       return;
     }
@@ -74,11 +75,15 @@ export default class TitleScene extends Phaser.Scene {
 
     const saved = loadChamp();
     let acts;
-    if (this.mode === 'more') acts = ['street', 'allstar', 'training', 'practice', 'account', 'back'];
+    // (64: menu enxuto — opções em CONFIGURACOES e a versão 16-bit em MAIS MODOS)
+    const opts64 = THEME.modern ? settings64(this.scene.get('Game')) : [];
+    if (this.mode === 'more') acts = THEME.modern ? ['street', 'allstar', 'training', 'practice', 'account', 'version', 'back'] : ['street', 'allstar', 'training', 'practice', 'account', 'back'];
+    else if (this.mode === 'settings') acts = [...opts64.map((o) => o.id), 'controls', 'back'];
     else {
       acts = ['arcade', 'competitive', 'career', 'franchise', 'champ'];
       if (saved && !saved.champion) acts.push('continue');
-      acts.push('more', 'version', 'controls', 'sound', 'music');
+      if (THEME.modern) acts.push('more', 'settings');
+      else acts.push('more', 'version', 'controls', 'sound', 'music');
     }
     const LABEL = {
       arcade: 'ARCADE',
@@ -98,14 +103,16 @@ export default class TitleScene extends Phaser.Scene {
       controls: 'CONTROLES',
       sound: sfx.muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO',
       music: sfx.musicMuted ? 'MUSICA: DESLIGADA' : 'MUSICA: LIGADA',
+      settings: 'CONFIGURACOES',
     };
+    for (const o of opts64) LABEL[o.id] = o.label();
     // com muitos itens o espaçamento aperta para caber na tela
     const gap = Math.min(17, Math.floor(135 / acts.length));
     drawPanel(g, W / 2 - 100, 92, 200, 20 + acts.length * gap, THEME.modern ? 0xff7a2e : 0xffe14d);
     // quem está jogando
     const prof = this.registry.get('profile');
     T(W - 8, 4, prof ? `${prof.name}  -  ${prof.coins} MOEDAS` : 'CONVIDADO', { origin: [1, 0], color: prof ? 0x6dff6d : 0x7a7290 });
-    const items = acts.map((a) => ({ label: LABEL[a], color: a === 'continue' ? 0x6dff6d : a === 'version' ? 0xff9a4d : undefined }));
+    const items = acts.map((a) => ({ label: LABEL[a], color: a === 'continue' ? 0x6dff6d : a === 'version' ? 0xff9a4d : a === 'settings' || (this.mode === 'settings' && opts64.some((o) => o.id === a)) ? 0x3ad6ff : undefined }));
     const m = makeMenu(this, items, W / 2, 102, { gap, depth: 5002 });
     this.children.list.forEach((o) => (o.type === 'BitmapText' || o.type === 'Text') && o.setScrollFactor(0));
     T(W / 2, 250, 'SETAS / WASD ESCOLHE    ENTER CONFIRMA', { color: 0x7a7290 });
@@ -124,6 +131,12 @@ export default class TitleScene extends Phaser.Scene {
       sfx.unlock();
       sfx.play('select');
       const a = acts[m.index];
+      const o64 = this.mode === 'settings' && opts64.find((o) => o.id === a);
+      if (o64) {
+        o64.act();
+        return m.label(m.index, o64.label());
+      }
+      if (a === 'settings') return this.scene.restart({ mode: 'settings' });
       if (a === 'arcade') this.scene.start('Select', { champ: false });
       else if (a === 'champ') this.scene.start('Select', { champ: true });
       else if (a === 'competitive') this.scene.start('Competitive');
@@ -152,7 +165,7 @@ export default class TitleScene extends Phaser.Scene {
     kb.on('keydown-SPACE', enter);
     kb.on('keydown-M', () => {
       const muted = sfx.toggleMute();
-      m.label(acts.indexOf('sound'), muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO');
+      if (acts.includes('sound')) m.label(acts.indexOf('sound'), muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO');
     });
   }
 }

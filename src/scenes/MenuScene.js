@@ -7,6 +7,7 @@ const lerpN = (a, b, t) => a + (b - a) * t;
 import PixelText from '../ui/PixelText.js';
 import { drawPanel, makeMenu, drawControls } from '../ui/widgets.js';
 import { sfx } from '../audio/sfx.js';
+import { settings64 } from '../v3d/settings64.js'; // (só usado no 64)
 
 const ROLE_COLORS = { PG: 0xffe14d, SG: 0x6fa0ff, SF: 0x6dff6d, PF: 0xff9a4d, C: 0xff6bd5 };
 const TAG_COLORS = { BLOQUEIO: 0xff9a4d, ARREMESSO: 0x6dff6d, CORTE: 0x6fa0ff, '1X1': 0xffe14d, INFILTRAR: 0xff6bd5, 'SEM BOLA': 0x3ad6ff, POSTE: 0xc8a2ff };
@@ -37,13 +38,15 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   create() {
-    this.add.rectangle(0, 0, VIEW.W, VIEW.H, 0x05050a, 0.68).setOrigin(0);
+    if (this.mode !== 'huddle') this.add.rectangle(0, 0, VIEW.W, VIEW.H, 0x05050a, 0.68).setOrigin(0);
     this.g = this.add.graphics();
     const kb = this.input.keyboard;
     if (this.mode === 'pause') this.buildPause();
     else if (this.mode === 'playbook') this.buildPlaybook();
     else if (this.mode === 'subs') this.buildSubs();
     else if (this.mode === 'timeout') this.buildTimeout();
+    else if (this.mode === 'settings') this.buildSettings64();
+    else if (this.mode === 'huddle') this.buildHuddle64();
     else this.buildControls();
 
     const nav = (d) => this.onNav && this.onNav(d);
@@ -60,11 +63,13 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   resumeGame() {
+    if (this.gs) this.gs.huddle64 = null; // (64) fim da roda do tempo técnico
     this.scene.resume('Game');
     this.scene.stop();
   }
 
   back() {
+    if (this.mode === 'huddle') return this.openTimeout64(); // (64) pular a roda: vai ao painel
     if (this.mode !== 'pause' && this.from === 'pause') {
       this.scene.restart({ game: this.gs, mode: 'pause' });
       return;
@@ -75,7 +80,7 @@ export default class MenuScene extends Phaser.Scene {
   // ------------------------------------------------------------ pausa
   buildPause() {
     const x = VIEW.W / 2 - 100;
-    drawPanel(this.g, x, 50, 200, this.gs.camModes ? 186 : 160, 0xffe14d); // (64: três itens a mais)
+    drawPanel(this.g, x, 50, 200, 160, 0xffe14d);
     new PixelText(this, VIEW.W / 2, 62, 'PAUSADO', { scale: 2, origin: [0.5, 0], color: 0xffe14d });
     const sc = this.gs.score;
     new PixelText(this, VIEW.W / 2, 84, `${this.gs.homeTeam.name} ${sc.home} X ${sc.away} ${this.gs.awayTeam.name}`, { origin: [0.5, 0], color: 0xb8b0d0 });
@@ -101,15 +106,12 @@ export default class MenuScene extends Phaser.Scene {
       { id: 'book', label: 'PLAYBOOK' },
       { id: 'subs', label: 'SUBSTITUICOES' },
       { id: 'timeout', label: `TEMPO TECNICO (${this.gs.timeouts})` },
-      ...(cams ? [{ id: 'camera', label: camLabel(), color: 0x3ad6ff }] : []),
-      ...(cams ? [{ id: 'meter', label: meterLabel(), color: 0x3ad6ff }] : []),
-      ...(cams ? [{ id: 'glyphs', label: glyphLabel(), color: 0x3ad6ff }] : []),
-      ...(cams ? [{ id: 'rumble', label: rumbleLabel(), color: 0x3ad6ff }] : []),
-      { id: 'controls', label: 'CONTROLES' },
+      // (64: câmera, medidor, botões, vibração, som e controles ficam em CONFIGURACOES)
+      cams ? { id: 'settings', label: 'CONFIGURACOES', color: 0x3ad6ff } : { id: 'controls', label: 'CONTROLES' },
       { id: 'restart', label: 'REINICIAR PARTIDA' },
       { id: 'quit', label: 'SAIR PARA O TITULO', color: 0xff7b6b },
     ];
-    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: cams ? 11 : 14 });
+    const m = makeMenu(this, items, VIEW.W / 2, 100, { gap: 14 });
     this.onNav = (d) => {
       m.set(m.index + d);
       sfx.play('select');
@@ -124,7 +126,14 @@ export default class MenuScene extends Phaser.Scene {
         case 'subs':
           return this.scene.restart({ game: this.gs, mode: 'subs', from: 'pause' });
         case 'timeout':
+          // (64) antes do painel: os times vão para a lateral e fazem a roda (com vinheta de TV)
+          if (this.gs.v64 && this.gs.timeouts > 0) {
+            this.gs.huddle64 = { t: 0, card: true };
+            return this.scene.restart({ game: this.gs, mode: 'huddle', from: 'pause' });
+          }
           return this.scene.restart({ game: this.gs, mode: 'timeout', from: 'pause' });
+        case 'settings':
+          return this.scene.restart({ game: this.gs, mode: 'settings', from: 'pause' });
         case 'camera': {
           const i = cams.findIndex((c) => c.id === this.gs.camMode);
           this.gs.setCamMode(cams[(i + 1) % cams.length].id);
@@ -154,6 +163,48 @@ export default class MenuScene extends Phaser.Scene {
           this.scene.stop('HUD');
           return this.scene.start('Title');
       }
+    };
+  }
+
+  // ------------------------------------------------------------ (64) roda do tempo técnico
+  buildHuddle64() {
+    this.wentTO = false; // (a cena é reaproveitada)
+    sfx.play('whistle');
+    this.onNav = null;
+    this.onEnter = () => this.openTimeout64();
+    this.time.delayedCall(4200, () => this.openTimeout64());
+  }
+  openTimeout64() {
+    if (this.wentTO) return;
+    this.wentTO = true;
+    if (this.gs.huddle64) this.gs.huddle64.card = false;
+    this.scene.restart({ game: this.gs, mode: 'timeout', from: 'pause' });
+  }
+
+  // ------------------------------------------------------------ (64) configurações
+  buildSettings64() {
+    const x = VIEW.W / 2 - 110;
+    const opts = settings64(this.gs);
+    const items = [
+      ...opts.map((o) => ({ id: o.id, label: o.label(), color: 0x3ad6ff })),
+      { id: 'controls', label: 'CONTROLES' },
+      { id: 'back', label: 'VOLTAR' },
+    ];
+    drawPanel(this.g, x, 44, 220, 44 + items.length * 14, 0x3ad6ff);
+    new PixelText(this, VIEW.W / 2, 54, 'CONFIGURACOES', { scale: 2, origin: [0.5, 0], color: 0x3ad6ff });
+    const m = makeMenu(this, items, VIEW.W / 2, 80, { gap: 14 });
+    this.onNav = (d) => {
+      m.set(m.index + d);
+      sfx.play('select');
+    };
+    this.onEnter = () => {
+      sfx.play('select');
+      const it = items[m.index];
+      if (it.id === 'back') return this.back();
+      if (it.id === 'controls') return this.scene.restart({ game: this.gs, mode: 'controls', from: 'pause', padPage: !!(navigator.getGamepads && [...navigator.getGamepads()].some(Boolean)) });
+      const o = opts.find((q) => q.id === it.id);
+      o.act();
+      m.label(m.index, o.label());
     };
   }
 
