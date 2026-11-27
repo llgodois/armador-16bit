@@ -38,6 +38,20 @@ export function makeMenu(scene, items, x, y, { gap = 16, scale = 1, origin = 0.5
     },
   };
   m.set(0);
+  // (só no 64) mouse: passar por cima seleciona, clicar confirma (a tela recebe o mesmo ENTER do teclado)
+  if (THEME.modern) {
+    texts.forEach((pt, i) => {
+      const t = pt.main;
+      t.setInteractive({ useHandCursor: true });
+      t.on('pointerover', () => m.index !== i && m.set(i));
+      t.on('pointerdown', () => {
+        m.set(i);
+        const ev = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        ev('keydown');
+        setTimeout(() => ev('keyup'), 60);
+      });
+    });
+  }
   return m;
 }
 
