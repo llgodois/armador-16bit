@@ -27,7 +27,7 @@ import RemapScene from '../scenes/RemapScene.js';
 import GameOverScene from '../scenes/GameOverScene.js';
 import LoginScene from '../scenes/LoginScene.js';
 import CompetitiveScene from '../scenes/CompetitiveScene.js';
-import { installPadBridge } from '../ui/padBridge.js';
+import { installPadBridge64, installErrorBox } from './padBridge64.js';
 import World3D, { CAM_MODES } from './World3D.js';
 import { enableModernTheme, fontsReady, styleScene, UI_ZOOM } from './modernUI.js';
 import { installPortraits } from './portrait3d.js';
@@ -88,7 +88,8 @@ const game = new Phaser.Game({
   scene: [BootScene, TitleScene, SelectScene, GameScene, HUDScene, MenuScene, ChampionshipScene, TrainingScene, CareerScene, AllStarScene, FranchiseScene, RemapScene, GameOverScene, LoginScene, CompetitiveScene],
 });
 
-installPadBridge(game);
+installErrorBox(); // (64) erro aparece na tela em vez de só travar
+installPadBridge64(game); // (64) controle nos menus, tolerante a analógico/botão com folga
 installLoginPad(game); // (64) o controle navega nos campos e botões do login
 // cada tela, ao ser criada, ganha o zoom e o fundo translúcido (a partida 2D fica escondida)
 game.events.once('ready', () => {
