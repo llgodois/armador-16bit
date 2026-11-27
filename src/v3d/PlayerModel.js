@@ -406,7 +406,9 @@ export default class PlayerModel {
       this.fallMax = s.fallStart;
     }
     this.fallT = Math.max(0, (this.fallT || 0) - dt);
-    const fk = this.fallT > 0 ? Math.min(1, this.fallT / 0.25, (this.fallMax - this.fallT) / 0.1) : 0;
+    // (levanta devagar nos últimos 0,5 s: dá para ver ele se recompondo)
+    const up = Math.min(1, this.fallT / 0.5);
+    const fk = this.fallT > 0 ? Math.min(up * up * (3 - 2 * up), (this.fallMax - this.fallT) / 0.1, 1) : 0;
     // senta no chão: o corpo inclina para trás (o giro é a partir dos pés) e desce só o
     // bastante para o QUADRIL encostar no piso; as pernas ficam esticadas, deitadas no chão
     const tilt = 0.55 * fk;

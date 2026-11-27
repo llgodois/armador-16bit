@@ -508,7 +508,7 @@ export function handContest(g, shooter, openDist, minFactor) {
   if (!d || dist >= openDist) return f;
   const u = g.user;
   // você: mão alta (Y / analógico D para cima) ou pulo (X); IA: levanta a mão quando chega perto
-  const up = d === u ? u.handsT > g.time.now || g.userJumpT > 0 || u.pose === 'shoot' : dist < 22 && d.stun <= 0;
+  const up = d === u ? u.handsT > g.time.now || g.userJumpT > 0 || u.pose === 'shoot' : dist < 22 && d.stun <= 0 && !recovering64(g, d);
   const tall = (d.cm - shooter.cm) * 0.006;
   if (up) return clamp(f * clamp(0.8 + (dist / openDist) * 0.2 - tall, 0.6, 1), minFactor * 0.85, 1);
   return Math.min(1, f * 1.15 + 0.05); // mão baixa: só o corpo atrapalha
@@ -1014,3 +1014,21 @@ export function deghostPad64(g, pad) {
   st.prev = ax;
   return { id: pad.id, index: pad.index, mapping: pad.mapping, buttons: pad.buttons, axes: out, raw: pad };
 }
+
+// ------------------------------------------------------------------ tornozelo quebrado (queda)
+// O marcador que cai fica no chão ~1,2 s e levanta devagar (1,6 s ao todo): sem toco nem mão
+// na bola até se recompor. Para não ficar fácil, um colega dele sai na hora para ajudar em quem
+// driblou: arremesso rápido sai livre; se demorar, a ajuda chega e contesta.
+export const FALL_TIME = 1.6;
+export const RECOVER_MS = 450;
+export function ankleFall64(g, d) {
+  d.stun = Math.max(d.stun || 0, FALL_TIME);
+  d.recoverUntil = g.time.now + FALL_TIME * 1000 + RECOVER_MS;
+  const h = g.ball && g.ball.state === 'held' ? g.ball.holder : null;
+  if (h && h.team !== d.team && g.defenseAI && !g.inbound) {
+    g.defenseAI.forceDouble = Math.max(g.defenseAI.forceDouble || 0, 1.8);
+    g.defenseAI.doubleCd = 0;
+  }
+}
+// ainda se levantando (sem toco / sem mão na bola)
+export const recovering64 = (g, d) => (d.recoverUntil || 0) > g.time.now;

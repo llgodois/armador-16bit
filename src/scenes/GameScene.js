@@ -26,7 +26,7 @@ import PixelText from '../ui/PixelText.js';
 import { sfx } from '../audio/sfx.js';
 import {
   onUserCatch, userOffense64, driveContact, windowMult, wantsPost, onOffensiveRebound,
-  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64,
+  handContest, stealTiming, stealCue, blockingFoul, reachZ64, tipOut, remapButtons64, lbSelect64, defense64, chooseDoubler64, dribble64, passMods64, dribbleBurst64, dribbleCd64, rightStick64, deghostPad64, ankleFall64, recovering64,
 } from '../game/mech64.js';
 import {
   clamp, closestOnSegment, courtDist, curve, distToBasket, inBackcourt, isLayupZone, isThree, lerp, rand,
@@ -1837,6 +1837,7 @@ export default class GameScene extends Phaser.Scene {
       const base = d.lunge > 0 ? CROSSOVER.ankleChanceLunging : CROSSOVER.ankleChance;
       if (Math.random() < (base * u.skills.crossAnkle * mult) / d.skills.defense) {
         d.stun = CROSSOVER.ankleStun;
+        if (this.v64) ankleFall64(this, d); // (64) cai de verdade: fica mais no chão e a ajuda vem
         d.stop();
         this.floatText(d.x, d.y - d.headY - 6, label, 0xffe14d);
         this.narrator.say('ankle', {}, true);
@@ -1981,6 +1982,7 @@ export default class GameScene extends Phaser.Scene {
       const base = d.lunge > 0 ? CROSSOVER.ankleChanceLunging : CROSSOVER.ankleChance;
       if (Math.random() < (base * u.skills.crossAnkle * comboMult) / d.skills.defense) {
         d.stun = CROSSOVER.ankleStun;
+        if (this.v64) ankleFall64(this, d); // (64) cai de verdade: fica mais no chão e a ajuda vem
         d.stop();
         this.floatText(d.x, d.y - d.headY - 6, 'QUEBROU!', 0xffe14d);
         this.narrator.say('ankle', {}, true);
@@ -2679,7 +2681,7 @@ export default class GameScene extends Phaser.Scene {
     }
     if (!blocker) {
       for (const d of this.defTeam) {
-        if (d === u || d.stun > 0) continue;
+        if (d === u || d.stun > 0 || (this.v64 && recovering64(this, d))) continue; // (64: levantando não dá toco)
         if (Math.hypot(d.x - shooter.x, d.y - shooter.y) < DEFENSE.blockRange && Math.random() < DEFENSE.blockChance * d.skills.defense * d.skills.blockMult * hf(d) * mult) {
           blocker = d;
           break;
