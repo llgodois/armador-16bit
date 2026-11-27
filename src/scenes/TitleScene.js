@@ -148,7 +148,8 @@ export default class TitleScene extends Phaser.Scene {
       else if (a === 'franchise') this.scene.start('Franchise');
       else if (a === 'more') this.scene.restart({ mode: 'more' });
       // as duas versões ficam no mesmo site: 16-bit (index.html) e 3D (3d.html)
-      else if (a === 'version') window.location.href = THEME.modern ? './index.html' : './3d.html';
+      // (no endereço próprio do 64, armador-64, o 16-bit fica no site armador-16bit)
+      else if (a === 'version') window.location.href = THEME.modern ? (location.pathname.includes('/armador-64') ? 'https://llgodois.github.io/armador-16bit/' : './index.html') : './3d.html';
       else if (a === 'back') this.scene.restart({ mode: 'menu' });
       else if (a === 'street') this.scene.start('Select', { champ: false, street: true });
       else if (a === 'allstar') this.scene.start('AllStar');
