@@ -115,7 +115,7 @@ export default class TitleScene extends Phaser.Scene {
     const items = acts.map((a) => ({ label: LABEL[a], color: a === 'continue' ? 0x6dff6d : a === 'version' ? 0xff9a4d : a === 'settings' || (this.mode === 'settings' && opts64.some((o) => o.id === a)) ? 0x3ad6ff : undefined }));
     const m = makeMenu(this, items, W / 2, 102, { gap, depth: 5002 });
     this.children.list.forEach((o) => (o.type === 'BitmapText' || o.type === 'Text') && o.setScrollFactor(0));
-    T(W / 2, 250, 'SETAS / WASD ESCOLHE    ENTER CONFIRMA', { color: 0x7a7290 });
+    T(W / 2, 250, THEME.modern && this.mode !== 'menu' ? 'SETAS ESCOLHEM    ENTER / A CONFIRMA    ESC / B VOLTA' : 'SETAS / WASD ESCOLHE    ENTER CONFIRMA', { color: 0x7a7290 });
 
     const kb = this.input.keyboard;
     const nav = (d) => {
@@ -163,6 +163,13 @@ export default class TitleScene extends Phaser.Scene {
     };
     kb.on('keydown-ENTER', enter);
     kb.on('keydown-SPACE', enter);
+    // (64) B do controle / ESC: volta de MAIS MODOS e CONFIGURACOES para o menu
+    if (THEME.modern && (this.mode === 'more' || this.mode === 'settings')) {
+      kb.once('keydown-ESC', () => {
+        sfx.play('select');
+        this.scene.restart({ mode: 'menu' });
+      });
+    }
     kb.on('keydown-M', () => {
       const muted = sfx.toggleMute();
       if (acts.includes('sound')) m.label(acts.indexOf('sound'), muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO');
