@@ -206,7 +206,8 @@ export default class HUDScene extends Phaser.Scene {
       if (THEME.modern) {
         // versão 3D: vidas como bolinhas verdes (vazias = vidas perdidas)
         this.gameClock.setText('');
-        if (!this.livesG) this.livesG = this.add.graphics();
+        // (a cena é reaproveitada entre partidas: o desenho da partida anterior já foi destruído)
+        if (!this.livesG || !this.livesG.scene) this.livesG = this.add.graphics();
         const lg = this.livesG.clear();
         for (let i = 0; i < 3; i++) {
           const x = 168 + i * 14;

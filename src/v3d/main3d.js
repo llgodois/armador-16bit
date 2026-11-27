@@ -58,6 +58,15 @@ installPortraits(); // telas de menu: retratos 3D no lugar dos bonecos pixelados
 installSelect64(SelectScene); // "Monte seu jogo" redesenhado (só no 64)
 installRoster64(); // elencos 2026-27 e atributos do 2K27 (só no 64)
 // placar da Sobrevivência: o RANKING inclui o bônus do desafio de estilo (só existe no 64)
+// a cena do placar é reaproveitada entre partidas: a fila de avisos da partida anterior não pode
+// ficar "presa" (o temporizador dela foi destruído junto com a cena)
+const hudCreate = HUDScene.prototype.create;
+HUDScene.prototype.create = function (...args) {
+  this.queueTimer = null;
+  this.toastQueue = [];
+  this.livesG = null;
+  return hudCreate.apply(this, args);
+};
 const hudUpdate = HUDScene.prototype.update;
 HUDScene.prototype.update = function (...args) {
   hudUpdate.apply(this, args);
