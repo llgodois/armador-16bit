@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Guia rapido do Armador 16-bit: modos, regras do Competitivo e controles.">
+<title>Guia do Armador</title>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap">
+<style>
+/* layout: uma coluna de leitura, faixas de seção como placas de ginásio; visual de arcade escuro (tema único, de propósito) */
+:root {
+  --bg: #0f0d1a;
+  --panel: #1b1830;
+  --line: #352f55;
+  --fg: #e6e1f5;
+  --muted: #a49cc4;
+  --gold: #ffd23f;
+  --court: #c98a4c;
+  --green: #6dff6d;
+  --red: #ff7b6b;
+  --blue: #6fa0ff;
+  --pixel: "Press Start 2P", ui-monospace, monospace;
+  --text: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--text);
+  font-size: 16px;
+  line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+.wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+header { padding-top: 40px; display: flex; flex-direction: column; gap: 14px; }
+h1 {
+  font-family: var(--pixel);
+  font-size: clamp(28px, 7vw, 52px);
+  line-height: 1.15;
+  color: var(--gold);
+  text-shadow: 4px 4px 0 #a3231c;
+  margin: 0;
+  letter-spacing: 1px;
+}
+.tag { font-family: var(--pixel); font-size: 11px; color: var(--blue); letter-spacing: 1px; line-height: 1.8; }
+.lead { color: var(--fg); margin: 0; max-width: 62ch; }
+.play {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: var(--panel); border: 2px solid var(--gold); padding: 14px 16px;
+}
+.play a {
+  font-family: var(--pixel); font-size: 12px; color: var(--bg); background: var(--gold);
+  padding: 12px 14px; text-decoration: none; letter-spacing: 1px;
+}
+.play a:focus-visible, .copy:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.play code { font-size: 14px; color: var(--muted); word-break: break-all; }
+.copy { font: 600 13px var(--text); background: transparent; color: var(--fg); border: 1px solid var(--line); padding: 6px 10px; cursor: pointer; }
+section { display: flex; flex-direction: column; gap: 12px; }
+h2 {
+  font-family: var(--pixel); font-size: 14px; letter-spacing: 1px; line-height: 1.6;
+  color: var(--bg); background: var(--court); margin: 0; padding: 8px 12px;
+  text-wrap: balance;
+}
+h3 { margin: 0; font-size: 16px; color: var(--gold); }
+p { margin: 0; max-width: 65ch; }
+ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+li::marker { color: var(--court); }
+strong { color: #fff; }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.mode { background: var(--panel); border: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mode p { font-size: 15px; color: var(--muted); }
+.mode.hot { border: 2px solid var(--gold); }
+.mode .lock { font-size: 12px; font-weight: 700; color: var(--red); letter-spacing: .5px; }
+.mode .free { font-size: 12px; font-weight: 700; color: var(--green); letter-spacing: .5px; }
+.rules { background: var(--panel); border-left: 4px solid var(--gold); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 15px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--pixel); font-size: 10px; letter-spacing: 1px; color: var(--muted); font-weight: 400; background: var(--panel); }
+td:first-child { color: var(--gold); font-weight: 700; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.note { font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .play a { transition: transform .1s; }
+  .play a:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 #a3231c; }
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ARMADOR<br>16-BIT</h1>
+    <div class="tag">BASQUETE EM PIXEL ART - VOCE E SEMPRE O ARMADOR</div>
+    <p class="lead">Um jogo de basquete em que você controla <strong>só o armador</strong>, no ataque e na defesa. O segredo é ler a defesa adversária e escolher a jogada certa: 30 times da NBA (cada um com uma versão histórica), 30 lendas e um modo competitivo com ranking para a gente disputar.</p>
+    <div class="play">
+      <a href="https://llgodois.github.io/armador-16bit/" target="_blank" rel="noopener">JOGAR</a>
+      <code id="link">https://llgodois.github.io/armador-16bit/</code>
+      <button class="copy" id="copy" type="button">Copiar link</button>
+    </div>
+    <p class="note">Abre no navegador do PC (Chrome, Edge…). Funciona com teclado ou controle de Xbox/PlayStation.</p>
+  </header>
+
+  <section>
+    <h2>1 - ENTRANDO</h2>
+    <ul>
+      <li>Ao abrir, digite um <strong>apelido (só letras)</strong> e um <strong>PIN de 4 números</strong>. Apelido novo cria a conta na hora.</li>
+      <li>Guarde o PIN: é ele que protege as suas moedas, as lendas liberadas e o seu lugar no ranking.</li>
+      <li>"Jogar sem conta" também funciona, mas não salva nada.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2 - OS MODOS</h2>
+    <div class="modes">
+      <div class="mode hot">
+        <h3>Competitivo (Sobrevivência)</h3>
+        <span class="lock">VALE RANKING</span>
+        <p>Só ataque, contra o Chicago Bulls 96 do Jordan, sempre no Difícil. Você tem 3 vidas: posse sem pontuar perde uma.</p>
+      </div>
+      <div class="mode">
+        <h3>Arcade</h3>
+        <span class="free">TUDO LIBERADO</span>
+        <p>Partida rápida até 21 pontos (ou 6 minutos). Qualquer time, qualquer lenda.</p>
+      </div>
+      <div class="mode">
+        <h3>Campeonato</h3>
+        <span class="lock">LENDAS E HISTÓRICOS BLOQUEADOS</span>
+        <p>Chave de 8 times por conferência: semifinal, final de conferência e Finais. Jogo único ou melhor de 3.</p>
+      </div>
+      <div class="mode">
+        <h3>Carreira</h3>
+        <p>Crie o seu próprio armador, jogue a faculdade, entre no draft e evolua com pontos: arremesso, passe, zonas quentes, insígnias.</p>
+      </div>
+      <div class="mode">
+        <h3>Franquia</h3>
+        <p>Você é o armador e o dono: elenco de 10, salários com teto, trocas, draft e playoffs jogáveis, temporada após temporada.</p>
+      </div>
+      <div class="mode">
+        <h3>Rua 3x3</h3>
+        <span class="lock">LENDAS E HISTÓRICOS BLOQUEADOS</span>
+        <p>Meia quadra de asfalto. Depois de rebote de defesa ou roubo, leve a bola para fora do arco antes de pontuar.</p>
+      </div>
+      <div class="mode">
+        <h3>Fim de semana das estrelas</h3>
+        <p>Torneio de 3 pontos, torneio de enterradas e o Jogo das Estrelas, Leste contra Oeste.</p>
+      </div>
+      <div class="mode">
+        <h3>Treino</h3>
+        <p>Lições de 1 posse: como ler cada defesa e como fazer cada movimento (giro, euro step, finta de passe, box out…).</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 - REGRAS DO COMPETITIVO</h2>
+    <div class="rules">
+      <p><strong>Ranking = suas cestas + suas assistências</strong> numa partida. Pontos dos colegas não contam, mas passe que vira cesta conta.</p>
+      <p><strong>3 vidas.</strong> Cada posse que termina sem ponto custa uma vida. A cada 4 posses certas, a defesa aperta.</p>
+      <p><strong>Moedas:</strong> cada ponto de ranking vale 10 moedas.</p>
+      <p><strong>Lendas:</strong> 6 já vêm liberadas (Magic, Curry, Chris Paul, Nash, Iverson, Kidd). As outras 24 saem por um desafio próprio (ex.: Stockton = 10 assistências numa partida) ou comprando com moedas, em Competitivo → Lendas.</p>
+      <p><strong>Times históricos:</strong> faça 20 pontos numa partida com o time atual de uma franquia para liberar a versão histórica dela (ex.: 20 com o Lakers libera o Lakers 87).</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>4 - CONTROLES PRINCIPAIS</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Acao</th><th>Teclado</th><th>Controle</th></tr></thead>
+        <tbody>
+          <tr><td>Mover / correr</td><td>WASD / Shift</td><td>Analógico / RT</td></tr>
+          <tr><td>Arremessar</td><td>Segure K e solte no verde</td><td>X (Quadrado)</td></tr>
+          <tr><td>Passar</td><td>Segure J, mire e solte · J + 1-4 direto</td><td>A (X) · RB + botão</td></tr>
+          <tr><td>Drible</td><td>L (lado, frente ou parado) · L L giro</td><td>B (Bolinha)</td></tr>
+          <tr><td>Ponte aérea</td><td>U</td><td>Y (Triângulo)</td></tr>
+          <tr><td>Chamar bloqueio</td><td>C (sem bola, segure: você bloqueia)</td><td>LB toque / segure</td></tr>
+          <tr><td>Jogadas</td><td>1-9 · F troca a página · TAB playbook</td><td>Direcional · R3 · View</td></tr>
+          <tr><td>Defesa</td><td>K roubo/toco · U mão alta · L deslize · C troca</td><td>X · Y · B · LB</td></tr>
+          <tr><td>Visão de quadra</td><td>Q</td><td>LT</td></tr>
+          <tr><td>Pausa</td><td>Esc</td><td>Start</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">A lista completa está no jogo, em Controles (tem uma página de teclado e outra de controle).</p>
+  </section>
+
+  <section>
+    <h2>5 - DICAS RAPIDAS</h2>
+    <ul>
+      <li><strong>Solte no verde.</strong> Com um bom arremessador e sem ninguém colado, o verde é cesta certa.</li>
+      <li><strong>Leia a defesa.</strong> O rodapé mostra a defesa adversária, e o técnico sugere a contra-jogada. Jogada certa dá bônus.</li>
+      <li><strong>Jogadas sem bola (azuis).</strong> Você passa e corre seguindo o anel azul pelos bloqueios; a bola volta quando você fica livre.</li>
+      <li><strong>Assistência conta no ranking.</strong> Passar para quem está livre rende tanto quanto fazer a cesta.</li>
+      <li>Antes de valer, faça o <strong>Treino → Mecânicas</strong>: são lições curtas, uma posse cada.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('copy');
+  var link = document.getElementById('link');
+  btn.addEventListener('click', function () {
+    var text = link.textContent;
+    var done = function () { btn.textContent = 'Link copiado'; };
+    var fallback = function () {
+      var r = document.createRange();
+      r.selectNodeContents(link);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      btn.textContent = 'Selecionado: Ctrl+C';
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch (e) { fallback(); }
+  });
+})();
+</script>
+
+</body>
+</html>
